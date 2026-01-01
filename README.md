@@ -1,0 +1,65 @@
+# B站视频倍速控制器 - 油猴脚本版
+
+这是针对 Bilibili 优化的视频倍速控制器油猴（Tampermonkey/Greasemonkey）脚本。
+
+## 📦 安装方法
+
+### 方法一：直接安装
+1. 确保已安装 [Tampermonkey](https://www.tampermonkey.net/) 或 [Greasemonkey](https://www.greasespot.net/)
+2. 点击 `video-speed-controller.user.js` 文件
+3. 油猴会自动识别并提示安装
+
+### 方法二：手动安装
+1. 打开 Tampermonkey 管理面板
+2. 点击「新建脚本」
+3. 将 `video-speed-controller.user.js` 的内容复制粘贴进去
+4. 保存（Ctrl+S / Cmd+S）
+
+## ✨ 功能特性
+
+- 🎬 **专为 B站 优化** - 适配 B站 播放器
+- 💾 **记住设置** - 速度设置会自动保存
+- 🔄 **自动应用** - 打开视频自动设置为默认倍速
+- 🖱️ **手动倍速检测** - 检测到用户手动调速后暂停自动应用
+- ⚙️ **菜单设置** - 通过油猴菜单快速调整速度
+- 📝 **配置简便** - 脚本顶部提供预设倍速常量，易于修改
+
+## 🔧 使用方法
+
+### 油猴菜单
+在任意 B站 视频页面，点击油猴图标，可以看到以下菜单选项：
+
+| 菜单项 | 说明 |
+|--------|------|
+| 📊 当前状态 | 查看当前速度和视频检测情况 |
+| ⚡ 启用/禁用 | 切换倍速功能开关 |
+| 设置为 Xx | 快速设置为预设速度 |
+| 🎚️ 自定义速度 | 输入任意倍速值（0.1-3.0） |
+
+## ⚙️ 默认设置
+
+- **默认平台**: B站 (Bilibili)
+- **默认速度**: 1.5x
+
+## 📝 更新日志
+
+### v1.1.0 (2026-01-01)
+- 精简脚本，变为 Bilibili 专版
+- 删除所有 YouTube 相关代码和配置
+- 将预设倍速常量移至脚本顶部，方便修改
+- 更新默认倍速为 1.5x
+
+### v1.0.0 (2025-12-30)
+- 从 Chrome 插件迁移为油猴脚本
+- 保留所有核心功能
+- 使用 GM_getValue/GM_setValue 替代 chrome.storage
+- 使用 GM_registerMenuCommand 提供设置界面
+
+## 🔗 相关链接
+
+
+- [问题反馈](https://github.com/codertesla/video-speed-controller/issues)
+
+## 📄 许可证
+
+MIT License
