@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         B站视频倍速器
-// @namespace    https://github.com/codertesla/video-speed-controller
+// @namespace    https://github.com/codertesla/bilibili-video-speed-controller-userscript
 // @version      1.1.0
 // @description  自由设定 Bilibili 视频的默认播放速度。支持记住设置、自动应用、手动倍速检测。
 // @author       codertesla
@@ -13,8 +13,8 @@
 // @grant        GM_registerMenuCommand
 // @grant        GM_addStyle
 // @license      MIT
-// @supportURL   https://github.com/codertesla/video-speed-controller
-// @homepageURL  https://github.com/codertesla/video-speed-controller
+// @supportURL   https://github.com/codertesla/bilibili-video-speed-controller-userscript
+// @homepageURL  https://github.com/codertesla/bilibili-video-speed-controller-userscript
 // @run-at       document-idle
 // ==/UserScript==
 

@@ -6,18 +6,18 @@
 
 ### 方法一：直接安装
 1. 确保已安装 [Tampermonkey](https://www.tampermonkey.net/) 或 [Greasemonkey](https://www.greasespot.net/)
-2. 点击 `video-speed-controller.user.js` 文件
+2. 点击 `bilibili-speed-controller.user.js` 文件
 3. 油猴会自动识别并提示安装
 
 ### 方法二：手动安装
 1. 打开 Tampermonkey 管理面板
 2. 点击「新建脚本」
-3. 将 `video-speed-controller.user.js` 的内容复制粘贴进去
+3. 将 `bilibili-speed-controller.user.js` 的内容复制粘贴进去
 4. 保存（Ctrl+S / Cmd+S）
 
 ## ✨ 功能特性
 
-- 🎬 **专为 B站 优化** - 适配 B站 播放器
+- 🎬 **专为 B站 优化** - 深度适配 B站 播放器
 - 💾 **记住设置** - 速度设置会自动保存
 - 🔄 **自动应用** - 打开视频自动设置为默认倍速
 - 🖱️ **手动倍速检测** - 检测到用户手动调速后暂停自动应用
@@ -27,7 +27,7 @@
 ## 🔧 使用方法
 
 ### 油猴菜单
-在任意 B站 视频页面，点击油猴图标，可以看到以下菜单选项：
+在 Bilibili 视频页面，点击油猴图标，可以看到以下菜单选项：
 
 | 菜单项 | 说明 |
 |--------|------|
@@ -38,14 +38,17 @@
 
 ## ⚙️ 默认设置
 
-- **默认平台**: B站 (Bilibili)
 - **默认速度**: 1.5x
 
 ## 📝 更新日志
 
+### v1.1.1 (2026-01-01)
+- 重命名脚本为 `bilibili-speed-controller.user.js`
+- 独立为 Bilibili 专用仓库
+
 ### v1.1.0 (2026-01-01)
 - 精简脚本，变为 Bilibili 专版
-- 删除所有 YouTube 相关代码和配置
+- 移除其他平台相关代码
 - 将预设倍速常量移至脚本顶部，方便修改
 - 更新默认倍速为 1.5x
 
@@ -57,8 +60,7 @@
 
 ## 🔗 相关链接
 
-
-- [问题反馈](https://github.com/codertesla/video-speed-controller/issues)
+- [问题反馈](https://github.com/codertesla/bilibili-video-speed-controller-userscript/issues)
 
 ## 📄 许可证
 
