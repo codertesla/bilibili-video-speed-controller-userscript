@@ -1,6 +1,6 @@
-# B站视频倍速控制器 - 油猴脚本版
+# B站视频倍速控制器
 
-这是针对 Bilibili 优化的视频倍速控制器油猴（Tampermonkey/Greasemonkey）脚本。
+这是针对 Bilibili 的视频倍速控制器油猴（Tampermonkey/Greasemonkey）脚本。
 
 ## 📦 安装方法
 
