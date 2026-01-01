@@ -1,13 +1,15 @@
 # B站视频倍速控制器
 
+[![Install on Greasy Fork](https://img.shields.io/badge/安装脚本-Greasy_Fork-ea4335?style=flat-square)](https://greasyfork.org/zh-CN/scripts/561015-b%E7%AB%99%E8%A7%86%E9%A2%91%E5%80%8D%E9%80%9F%E5%99%A8) [![GitHub Repo](https://img.shields.io/badge/GitHub-仓库-1890ff?style=flat-square)](https://github.com/codertesla/bilibili-video-speed-controller-userscript) [![MIT License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](https://github.com/codertesla/bilibili-video-speed-controller-userscript/blob/main/LICENSE)
+
 这是针对 Bilibili 的视频倍速控制器油猴（Tampermonkey/Greasemonkey）脚本。
 
 ## 📦 安装方法
 
-### 方法一：直接安装
+### 方法一：GreasyFork 安装（推荐）
 1. 确保已安装 [Tampermonkey](https://www.tampermonkey.net/) 或 [Greasemonkey](https://www.greasespot.net/)
-2. 点击 `bilibili-speed-controller.user.js` 文件
-3. 油猴会自动识别并提示安装
+2. 访问 **[GreasyFork 脚本页面](https://greasyfork.org/zh-CN/scripts/561015-b%E7%AB%99%E8%A7%86%E9%A2%91%E5%80%8D%E9%80%9F%E5%99%A8)**
+3. 点击绿色的「安装此脚本」按钮
 
 ### 方法二：手动安装
 1. 打开 Tampermonkey 管理面板
