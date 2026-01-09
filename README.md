@@ -4,11 +4,11 @@
 
 这是针对 Bilibili 的视频倍速控制器油猴（Tampermonkey/Greasemonkey）脚本。
 
-## � 预览
+## 📸 预览
 
 ![设置面板](images/settings-panel.png)
 
-## �📦 安装方法
+## 📦 安装方法
 
 ### 方法一：GreasyFork 安装（推荐）
 1. 确保已安装 [Tampermonkey](https://www.tampermonkey.net/) 或 [Greasemonkey](https://www.greasespot.net/)
