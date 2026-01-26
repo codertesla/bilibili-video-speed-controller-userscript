@@ -6,7 +6,7 @@
 
 ## 📸 预览
 
-![设置面板](images/settings-panel.png)
+![设置面板](images/settings-panel.avif)
 
 ## 📦 安装方法
 
