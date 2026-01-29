@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         B站视频倍速器
 // @namespace    https://github.com/codertesla/bilibili-video-speed-controller-userscript
-// @version      1.4.1
+// @version      1.4.2
 // @description  自由设定 Bilibili 视频的默认播放速度。支持记住设置、自动应用、手动倍速检测、键盘快捷键控制。
 // @author       codertesla
 // @match        *://*.bilibili.com/video/*
@@ -601,17 +601,17 @@
                     left: 50%;
                     transform: translateX(-50%);
                     z-index: 2147483647;
-                    background: rgba(28, 28, 28, 0.9);
-                    border-radius: 4px;
-                    padding: 8px 16px;
+                    background: rgba(20, 20, 20, 0.9);
+                    border-radius: 8px;
+                    padding: 20px 40px;
                     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
                     color: #fff;
-                    font-size: 14px;
+                    font-size: 32px;
                     font-weight: 500;
                     opacity: 0;
                     transition: opacity 0.15s ease;
                     pointer-events: none;
-                    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
                 }
                 .speed-toast.visible {
                     opacity: 1;
