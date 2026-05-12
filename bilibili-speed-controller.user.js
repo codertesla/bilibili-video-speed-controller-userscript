@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         B站视频倍速器
 // @namespace    https://github.com/codertesla/bilibili-video-speed-controller-userscript
-// @version      1.4.2
-// @description  自由设定 Bilibili 视频的默认播放速度。支持记住设置、自动应用、手动倍速检测、键盘快捷键控制。
+// @version      1.5.0
+// @description  自由设定 Bilibili 视频的默认播放速度。支持记住设置、自动应用、手动倍速检测、键盘快捷键控制、SPA 切换。
 // @author       codertesla
 // @match        *://*.bilibili.com/video/*
 // @match        *://*.bilibili.com/bangumi/*
@@ -11,6 +11,7 @@
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_registerMenuCommand
+// @grant        GM_unregisterMenuCommand
 // @grant        GM_addStyle
 // @license      MIT
 // @supportURL   https://github.com/codertesla/bilibili-video-speed-controller-userscript
@@ -27,16 +28,18 @@
         MAX: 3.0,
         DEFAULT: 1.0,
         DEFAULT_ENABLED: true,
-        PLATFORM_DEFAULTS: {
-            bilibili: 1.5
-        },
+        BILIBILI_DEFAULT: 1.5,
         PRESETS: [0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0]
     };
 
-    const MIN_SPEED = SPEED_SETTINGS.MIN;
-    const MAX_SPEED = SPEED_SETTINGS.MAX;
+    const STORAGE_KEYS = {
+        speed: 'bilibiliSpeed',
+        enabled: 'enabled',
+        panelPosition: 'panelPosition',
+        debug: 'debug'
+    };
 
-    // ==================== 存储工具（油猴版） ====================
+    // ==================== 存储工具 ====================
     const Storage = {
         get(key, defaultValue) {
             return GM_getValue(key, defaultValue);
@@ -46,44 +49,31 @@
         }
     };
 
-    // ==================== 错误处理工具 ====================
-    class ErrorHandler {
-        static log(level, message, error = null) {
-            const prefix = '[Video Speed Controller]';
-            const logMessage = `${prefix} ${message}`;
+    // ==================== 日志工具 ====================
+    const DEBUG = Storage.get(STORAGE_KEYS.debug, false);
+    const LOG_PREFIX = '[BiliSpeeder]';
 
-            const logWithOptionalError = (logger) => {
-                if (error !== null && error !== undefined) {
-                    logger(logMessage, error);
-                } else {
-                    logger(logMessage);
-                }
-            };
-
-            switch (level) {
-                case 'error':
-                    logWithOptionalError(console.error);
-                    break;
-                case 'warn':
-                    logWithOptionalError(console.warn);
-                    break;
-                case 'info':
-                default:
-                    console.log(logMessage);
-                    break;
-            }
+    const log = {
+        info(message) {
+            if (DEBUG) console.log(`${LOG_PREFIX} ${message}`);
+        },
+        warn(message, error) {
+            if (error != null) console.warn(`${LOG_PREFIX} ${message}`, error);
+            else console.warn(`${LOG_PREFIX} ${message}`);
+        },
+        error(message, error) {
+            if (error != null) console.error(`${LOG_PREFIX} ${message}`, error);
+            else console.error(`${LOG_PREFIX} ${message}`);
         }
-    }
+    };
 
-    // ==================== DOM操作工具 ====================
-    class DOMUtils {
-        static findVideoElements() {
-            return Array.from(document.querySelectorAll('video')).filter(video => {
-                return !video.classList.contains('speed-controller-ignored');
-            });
-        }
+    // ==================== DOM 工具 ====================
+    const DOMUtils = {
+        findVideoElements() {
+            return Array.from(document.querySelectorAll('video'));
+        },
 
-        static getVideoContainer(video) {
+        getVideoContainer(video) {
             let container = video.parentElement;
             while (container && container.tagName !== 'BODY') {
                 if (container.offsetWidth > video.offsetWidth ||
@@ -93,60 +83,35 @@
                 container = container.parentElement;
             }
             return video.parentElement || document.body;
-        }
+        },
 
-        static isValidSpeed(speed) {
-            return typeof speed === 'number' && !isNaN(speed) &&
-                speed >= MIN_SPEED && speed <= MAX_SPEED;
-        }
+        isValidSpeed(speed) {
+            return typeof speed === 'number' && !Number.isNaN(speed) &&
+                speed >= SPEED_SETTINGS.MIN && speed <= SPEED_SETTINGS.MAX;
+        },
 
-        static findOptimalObserverTarget(selectors) {
+        findOptimalObserverTarget(selectors) {
             for (const selector of selectors) {
                 const element = document.querySelector(selector);
-                if (element) {
-                    return element;
-                }
+                if (element) return element;
             }
             return document.body;
-        }
+        },
 
-        static isVideoContainer(element) {
-            if (!element) return false;
-            const hasVideo = element.querySelector('video') !== null;
-            const hasVideoClasses = /\b(player|video|media)\b/i.test(element.className);
-            const hasVideoId = /\b(player|video)\b/i.test(element.id);
-            return hasVideo || hasVideoClasses || hasVideoId;
-        }
+        isVideoContainer(element) {
+            if (!element || !element.classList) return false;
+            if (element.querySelector && element.querySelector('video')) return true;
+            const classList = element.classList;
+            for (const cls of classList) {
+                if (/^(player|video|media)/i.test(cls) || /player|video|media/i.test(cls)) {
+                    return true;
+                }
+            }
+            const id = element.id || '';
+            return /^(player|video)/i.test(id);
+        },
 
-        static getElementDepth(element) {
-            let depth = 0;
-            let current = element;
-            while (current && current !== document.body) {
-                depth++;
-                current = current.parentElement;
-            }
-            return depth;
-        }
-
-        static clampObserverTargetDepth(element, maxDepth) {
-            if (!element) {
-                return { node: null, depth: 0 };
-            }
-            if (typeof maxDepth !== 'number' || maxDepth < 0) {
-                return { node: element, depth: DOMUtils.getElementDepth(element) };
-            }
-            let current = element;
-            let depth = DOMUtils.getElementDepth(current);
-            while (current && current !== document.body && depth > maxDepth) {
-                const parent = current.parentElement;
-                if (!parent) break;
-                current = parent;
-                depth = DOMUtils.getElementDepth(current);
-            }
-            return { node: current || element, depth };
-        }
-
-        static describeElement(element) {
+        describeElement(element) {
             if (!element) return 'unknown';
             const parts = [];
             if (element.tagName) parts.push(element.tagName.toLowerCase());
@@ -156,31 +121,32 @@
             }
             return parts.join('') || 'unnamed-element';
         }
-    }
+    };
 
-    // ==================== 视频速度控制器核心类 ====================
+    // ==================== 视频速度控制器 ====================
     class VideoSpeedController {
-        constructor(platform, config = {}) {
-            this.platform = platform;
-            this.currentSpeed = config.defaultSpeed || 1.0;
+        constructor(config = {}) {
+            this.currentSpeed = config.defaultSpeed || SPEED_SETTINGS.BILIBILI_DEFAULT;
             this.enabled = config.defaultEnabled !== false;
             this.observer = null;
             this.isInitialized = false;
-            this.hasLoggedDeepTargetWarning = false;
-            this.storageKeys = {
-                speed: `${platform}Speed`,
-                enabled: 'enabled'
-            };
 
-            this.manualOverrides = new Map();
-            this.observedVideos = new Set();
-            this.videoSources = new Map();
+            // 使用 WeakMap / WeakSet 以便视频元素被移除后能被 GC
+            this.observedVideos = new WeakSet();
+            this.manualOverrides = new WeakMap();
+            this.videoSources = new WeakMap();
+            this.expectedRates = new WeakMap();
+
             this.boundHandleRateChange = this.handleRateChange.bind(this);
             this.boundHandleLoadedMetadata = this.handleLoadedMetadata.bind(this);
             this.boundRecordInteraction = this.recordInteraction.bind(this);
+            this.boundHandleNavigation = this.handleNavigation.bind(this);
+
             this.interactionEvents = ['pointerdown', 'mousedown', 'keydown', 'wheel', 'touchstart'];
             this.interactionTrackingInitialized = false;
+            this.navigationTrackingInitialized = false;
             this.lastUserInteraction = 0;
+            this.lastUrl = location.href;
 
             this.config = {
                 targetSelector: config.targetSelector || 'body',
@@ -191,23 +157,26 @@
                     attributeFilter: ['src', 'class']
                 },
                 debounceDelay: config.debounceDelay || 300,
-                maxObserverDepth: typeof config.maxObserverDepth === 'number' ? config.maxObserverDepth : 6,
-                deepTargetWarningThreshold: typeof config.deepTargetWarningThreshold === 'number'
-                    ? config.deepTargetWarningThreshold : 7,
-                manualOverrideInteractionWindow: typeof config.manualOverrideInteractionWindow === 'number'
-                    ? config.manualOverrideInteractionWindow : 1200,
+                saveDebounceDelay: config.saveDebounceDelay || 300,
+                navigationDelay: config.navigationDelay || 300,
+                manualOverrideInteractionWindow:
+                    typeof config.manualOverrideInteractionWindow === 'number'
+                        ? config.manualOverrideInteractionWindow
+                        : 1200,
                 ...config
             };
 
-            this.debounceTimer = null;
+            this.applyTimer = null;
+            this.saveTimer = null;
+            this.onStateChange = null; // 供外部订阅（刷新菜单）
         }
 
         async initialize() {
             if (this.isInitialized) return;
-
             try {
                 this.loadSettings();
                 this.setupUserInteractionTracking();
+                this.setupNavigationTracking();
 
                 if (this.enabled) {
                     this.applyVideoSpeed();
@@ -215,43 +184,50 @@
                 }
 
                 this.isInitialized = true;
-                ErrorHandler.log('info', `${this.platform} 视频速度控制器初始化完成`);
+                log.info('初始化完成');
             } catch (error) {
-                ErrorHandler.log('error', `${this.platform} 控制器初始化失败`, error);
+                log.error('初始化失败', error);
             }
         }
 
         loadSettings() {
-            const savedSpeed = Storage.get(this.storageKeys.speed, this.currentSpeed);
-            const savedEnabled = Storage.get(this.storageKeys.enabled, this.enabled);
+            const savedSpeed = parseFloat(Storage.get(STORAGE_KEYS.speed, this.currentSpeed));
+            const savedEnabled = Storage.get(STORAGE_KEYS.enabled, this.enabled);
 
-            this.currentSpeed = parseFloat(savedSpeed);
+            this.currentSpeed = DOMUtils.isValidSpeed(savedSpeed)
+                ? savedSpeed
+                : (this.config.defaultSpeed || SPEED_SETTINGS.BILIBILI_DEFAULT);
             this.enabled = savedEnabled;
 
-            if (!DOMUtils.isValidSpeed(this.currentSpeed)) {
-                this.currentSpeed = this.config.defaultSpeed || 1.0;
-                ErrorHandler.log('warn', `无效的速度值，已重置为 ${this.currentSpeed}x`);
+            if (!DOMUtils.isValidSpeed(savedSpeed)) {
+                log.warn(`无效的保存速度，已重置为 ${this.currentSpeed}x`);
             }
         }
 
+        // 防抖持久化，避免拖动滑杆时每次 input 都同步写入
         saveSettings() {
-            Storage.set(this.storageKeys.speed, this.currentSpeed);
-            Storage.set(this.storageKeys.enabled, this.enabled);
+            if (this.saveTimer) clearTimeout(this.saveTimer);
+            this.saveTimer = setTimeout(() => {
+                Storage.set(STORAGE_KEYS.speed, this.currentSpeed);
+                Storage.set(STORAGE_KEYS.enabled, this.enabled);
+                this.saveTimer = null;
+            }, this.config.saveDebounceDelay);
         }
 
         setSpeed(newSpeed) {
-            if (DOMUtils.isValidSpeed(newSpeed)) {
-                this.currentSpeed = newSpeed;
-                this.saveSettings();
-                this.clearManualOverrides();
-                if (this.enabled) {
-                    this.applyVideoSpeed();
-                }
-                ErrorHandler.log('info', `${this.platform} 速度已设置为 ${newSpeed}x`);
-            }
+            if (!DOMUtils.isValidSpeed(newSpeed)) return;
+            if (Math.abs(this.currentSpeed - newSpeed) < 0.001) return;
+
+            this.currentSpeed = newSpeed;
+            this.saveSettings();
+            this.clearManualOverrides();
+            if (this.enabled) this.applyVideoSpeed();
+            log.info(`速度设置为 ${newSpeed}x`);
+            this.emitStateChange();
         }
 
         setEnabled(newEnabled) {
+            if (this.enabled === newEnabled) return;
             this.enabled = newEnabled;
             this.saveSettings();
             if (this.enabled) {
@@ -262,15 +238,21 @@
                 this.resetVideoSpeed();
                 this.disconnectObserver();
             }
-            ErrorHandler.log('info', `${this.platform} 倍速功能 ${this.enabled ? '已启用' : '已禁用'}`);
+            log.info(`倍速功能 ${this.enabled ? '已启用' : '已禁用'}`);
+            this.emitStateChange();
         }
 
-        debounceUpdate() {
-            if (this.debounceTimer) {
-                clearTimeout(this.debounceTimer);
+        emitStateChange() {
+            if (typeof this.onStateChange === 'function') {
+                try { this.onStateChange(this.getStatus()); } catch (e) { /* ignore */ }
             }
-            this.debounceTimer = setTimeout(() => {
+        }
+
+        debounceApply() {
+            if (this.applyTimer) clearTimeout(this.applyTimer);
+            this.applyTimer = setTimeout(() => {
                 this.applyVideoSpeed();
+                this.applyTimer = null;
             }, this.config.debounceDelay);
         }
 
@@ -278,151 +260,71 @@
             try {
                 const videos = DOMUtils.findVideoElements();
                 let appliedCount = 0;
-
                 videos.forEach(video => {
                     this.attachVideoListeners(video);
-
-                    if (this.manualOverrides.has(video)) {
-                        return;
-                    }
-
-                    if (this.setVideoPlaybackRate(video, this.currentSpeed)) {
-                        appliedCount++;
-                    }
+                    if (this.manualOverrides.has(video)) return;
+                    if (this.setVideoPlaybackRate(video, this.currentSpeed)) appliedCount++;
                 });
-
                 if (appliedCount > 0) {
-                    ErrorHandler.log('info',
-                        `${this.platform} 已将 ${appliedCount} 个视频速度设置为 ${this.currentSpeed}x`);
+                    log.info(`已将 ${appliedCount} 个视频速度设置为 ${this.currentSpeed}x`);
                 }
             } catch (error) {
-                ErrorHandler.log('error', `${this.platform} 应用视频速度失败`, error);
+                log.error('应用视频速度失败', error);
             }
         }
 
         resetVideoSpeed() {
             try {
                 const videos = DOMUtils.findVideoElements();
-                let resetCount = 0;
-
                 videos.forEach(video => {
                     this.attachVideoListeners(video);
-                    if (this.setVideoPlaybackRate(video, 1.0)) {
-                        resetCount++;
-                    }
+                    this.setVideoPlaybackRate(video, 1.0);
                 });
-
-                if (resetCount > 0) {
-                    ErrorHandler.log('info', `${this.platform} 已重置 ${resetCount} 个视频速度为 1.0x`);
-                }
             } catch (error) {
-                ErrorHandler.log('error', `${this.platform} 重置视频速度失败`, error);
+                log.error('重置视频速度失败', error);
             }
         }
 
         setupObserver() {
             this.disconnectObserver();
-
             try {
                 let targetNode;
-                let observerOptions = { ...this.config.observeOptions };
-
                 if (Array.isArray(this.config.targetSelector)) {
                     targetNode = DOMUtils.findOptimalObserverTarget(this.config.targetSelector);
                 } else {
                     targetNode = document.querySelector(this.config.targetSelector) || document.body;
                 }
-
-                let { node: adjustedTarget, depth: targetDepth } = DOMUtils.clampObserverTargetDepth(
-                    targetNode,
-                    this.config.maxObserverDepth
-                );
-
-                if (adjustedTarget && adjustedTarget !== targetNode) {
-                    targetNode = adjustedTarget;
-                    ErrorHandler.log('info', `${this.platform} 调整观察目标为 ${DOMUtils.describeElement(targetNode)} 以降低观察深度`);
-                }
-
-                observerOptions = { ...observerOptions };
-                const warningThreshold = this.config.deepTargetWarningThreshold;
-                if (typeof warningThreshold === 'number' && targetDepth > warningThreshold && !this.hasLoggedDeepTargetWarning) {
-                    ErrorHandler.log('info',
-                        `${this.platform} 观察目标深度较大(${targetDepth})，请确认 targetSelector 是否最佳`);
-                    this.hasLoggedDeepTargetWarning = true;
-                }
-
-                this.observer = new MutationObserver((mutations) => {
-                    this.handleMutations(mutations);
-                });
-
-                this.observer.observe(targetNode, observerOptions);
-
-                this.observerInfo = {
-                    target: DOMUtils.describeElement(targetNode),
-                    depth: targetDepth,
-                    options: observerOptions
-                };
-
-                ErrorHandler.log('info', `${this.platform} MutationObserver 已设置，目标: ${this.observerInfo.target}`);
+                this.observer = new MutationObserver((mutations) => this.handleMutations(mutations));
+                this.observer.observe(targetNode, this.config.observeOptions);
+                log.info(`MutationObserver 已设置，目标: ${DOMUtils.describeElement(targetNode)}`);
             } catch (error) {
-                ErrorHandler.log('error', `${this.platform} 设置观察器失败`, error);
+                log.error('设置观察器失败', error);
             }
         }
 
         handleMutations(mutations) {
-            let hasVideoChanges = false;
-            let changeCount = 0;
-            const maxChangesToProcess = 50;
-
+            const filter = this.config.observeOptions.attributeFilter;
             for (const mutation of mutations) {
-                if (changeCount >= maxChangesToProcess) {
-                    ErrorHandler.log('warn', `${this.platform} 变更数量过多，跳过部分处理`);
-                    break;
-                }
-
                 if (mutation.type === 'childList') {
                     for (const node of mutation.addedNodes) {
-                        if (node.nodeType === Node.ELEMENT_NODE) {
-                            if (this.isVideoRelatedElement(node)) {
-                                hasVideoChanges = true;
-                                changeCount++;
-                                break;
-                            }
+                        if (node.nodeType === Node.ELEMENT_NODE && this.isVideoRelatedElement(node)) {
+                            if (this.enabled) this.debounceApply();
+                            return;
                         }
                     }
-                } else if (mutation.type === 'attributes') {
-                    if (mutation.target.nodeName === 'VIDEO') {
-                        if (this.config.observeOptions.attributeFilter) {
-                            if (this.config.observeOptions.attributeFilter.includes(mutation.attributeName)) {
-                                hasVideoChanges = true;
-                                changeCount++;
-                            }
-                        } else {
-                            hasVideoChanges = true;
-                            changeCount++;
-                        }
+                } else if (mutation.type === 'attributes' && mutation.target.nodeName === 'VIDEO') {
+                    if (!filter || filter.includes(mutation.attributeName)) {
+                        if (this.enabled) this.debounceApply();
+                        return;
                     }
                 }
-
-                if (hasVideoChanges) break;
-            }
-
-            if (hasVideoChanges && this.enabled) {
-                ErrorHandler.log('info', `${this.platform} 检测到视频元素变化，重新应用速度 (${changeCount}个变更)`);
-                this.debounceUpdate();
             }
         }
 
         isVideoRelatedElement(element) {
-            if (element.nodeName === 'VIDEO') {
-                return true;
-            }
-            if (element.querySelector && DOMUtils.getElementDepth(element) < 3) {
-                const video = element.querySelector('video');
-                if (video) {
-                    return true;
-                }
-            }
+            if (element.nodeName === 'VIDEO') return true;
+            // 只检查顶层节点和一层子级，避免深度遍历
+            if (element.querySelector && element.querySelector('video')) return true;
             return DOMUtils.isVideoContainer(element);
         }
 
@@ -430,31 +332,29 @@
             if (this.observer) {
                 this.observer.disconnect();
                 this.observer = null;
-                ErrorHandler.log('info', `${this.platform} MutationObserver 已断开`);
             }
         }
 
         destroy() {
             this.disconnectObserver();
-            if (this.debounceTimer) {
-                clearTimeout(this.debounceTimer);
+            if (this.applyTimer) { clearTimeout(this.applyTimer); this.applyTimer = null; }
+            if (this.saveTimer) {
+                clearTimeout(this.saveTimer);
+                // 立即刷写，避免丢失最后一次修改
+                Storage.set(STORAGE_KEYS.speed, this.currentSpeed);
+                Storage.set(STORAGE_KEYS.enabled, this.enabled);
+                this.saveTimer = null;
             }
-            this.observedVideos.forEach(video => {
-                video.removeEventListener('ratechange', this.boundHandleRateChange, true);
-                video.removeEventListener('loadedmetadata', this.boundHandleLoadedMetadata, true);
-                delete video.__speedControllerApplying;
-            });
-            this.observedVideos.clear();
-            this.manualOverrides.clear();
-            this.videoSources.clear();
+            // 弱引用集合会随 video 元素一起回收，这里无法遍历移除监听器
+            // 但 video 元素被移除时其监听器也会随之失效，无泄漏风险
             this.teardownUserInteractionTracking();
+            this.teardownNavigationTracking();
             this.isInitialized = false;
-            ErrorHandler.log('info', `${this.platform} 控制器已销毁`);
+            log.info('控制器已销毁');
         }
 
         getStatus() {
             return {
-                platform: this.platform,
                 enabled: this.enabled,
                 currentSpeed: this.currentSpeed,
                 isInitialized: this.isInitialized,
@@ -463,9 +363,7 @@
         }
 
         attachVideoListeners(video) {
-            if (!video || this.observedVideos.has(video)) {
-                return;
-            }
+            if (!video || this.observedVideos.has(video)) return;
             video.addEventListener('ratechange', this.boundHandleRateChange, true);
             video.addEventListener('loadedmetadata', this.boundHandleLoadedMetadata, true);
             this.observedVideos.add(video);
@@ -473,52 +371,53 @@
         }
 
         clearManualOverrides() {
-            this.manualOverrides.clear();
+            // WeakMap 无法直接 clear，重建即可
+            this.manualOverrides = new WeakMap();
         }
 
         setVideoPlaybackRate(video, speed) {
-            if (!video || !DOMUtils.isValidSpeed(speed)) {
-                return false;
-            }
-            if (typeof video.playbackRate !== 'number') {
-                return false;
-            }
+            if (!video || !DOMUtils.isValidSpeed(speed)) return false;
+            if (typeof video.playbackRate !== 'number') return false;
             if (Math.abs(video.playbackRate - speed) < 0.001) {
                 this.manualOverrides.delete(video);
                 return false;
             }
             try {
-                video.__speedControllerApplying = true;
+                // 记录"我们期望的值"，待异步 ratechange 到达时据此识别
+                this.expectedRates.set(video, speed);
                 video.playbackRate = speed;
                 this.manualOverrides.delete(video);
                 this.videoSources.set(video, video.currentSrc || video.src || '');
                 return true;
             } catch (error) {
-                ErrorHandler.log('warn', `${this.platform} 设置视频速度失败，速率=${speed}`, error);
+                this.expectedRates.delete(video);
+                log.warn(`设置视频速度失败，速率=${speed}`, error);
                 return false;
-            } finally {
-                video.__speedControllerApplying = false;
             }
         }
 
         handleRateChange(event) {
             const video = event.target;
-            if (!video || video.__speedControllerApplying) {
-                return;
-            }
+            if (!video) return;
             const newRate = video.playbackRate;
-            if (!DOMUtils.isValidSpeed(newRate)) {
+
+            // 若本次变化源自脚本自身（expectedRates 中记录），直接消费并忽略
+            const expected = this.expectedRates.get(video);
+            if (expected !== undefined && Math.abs(newRate - expected) < 0.001) {
+                this.expectedRates.delete(video);
                 return;
             }
+
+            if (!DOMUtils.isValidSpeed(newRate)) return;
+
             const now = Date.now();
             const interactionWindow = Math.max(0, this.config.manualOverrideInteractionWindow || 0);
             const hadRecentInteraction = now - this.lastUserInteraction <= interactionWindow;
 
             if (!hadRecentInteraction) {
+                // 无用户交互，很可能是网站自身重置；重新应用我们的倍速
                 this.manualOverrides.delete(video);
-                if (this.enabled) {
-                    this.debounceUpdate();
-                }
+                if (this.enabled) this.debounceApply();
                 return;
             }
 
@@ -527,30 +426,22 @@
                 return;
             }
 
-            this.manualOverrides.set(video, {
-                speed: newRate,
-                timestamp: Date.now()
-            });
-
-            ErrorHandler.log('info', `${this.platform} 检测到手动倍速 ${newRate}x，暂停自动应用`);
+            this.manualOverrides.set(video, { speed: newRate, timestamp: now });
+            log.info(`检测到手动倍速 ${newRate}x，暂停自动应用`);
         }
 
         handleLoadedMetadata(event) {
             const video = event.target;
-            if (!video) {
-                return;
-            }
+            if (!video) return;
             const newSrc = video.currentSrc || video.src || '';
             const previousSrc = this.videoSources.get(video) || '';
-
             if (newSrc && newSrc !== previousSrc) {
                 this.manualOverrides.delete(video);
                 this.videoSources.set(video, newSrc);
-                ErrorHandler.log('info', `${this.platform} 检测到新媒体源，恢复自动倍速`);
+                log.info('检测到新媒体源，恢复自动倍速');
             }
-
             if (this.enabled && !this.manualOverrides.has(video)) {
-                this.debounceUpdate();
+                this.debounceApply();
             }
         }
 
@@ -559,42 +450,83 @@
         }
 
         setupUserInteractionTracking() {
-            if (this.interactionTrackingInitialized) {
-                return;
-            }
-            this.interactionEvents.forEach(eventName => {
-                document.addEventListener(eventName, this.boundRecordInteraction, true);
-            });
+            if (this.interactionTrackingInitialized) return;
+            this.interactionEvents.forEach(name =>
+                document.addEventListener(name, this.boundRecordInteraction, true));
             this.interactionTrackingInitialized = true;
         }
 
         teardownUserInteractionTracking() {
-            if (!this.interactionTrackingInitialized) {
-                return;
-            }
-            this.interactionEvents.forEach(eventName => {
-                document.removeEventListener(eventName, this.boundRecordInteraction, true);
-            });
+            if (!this.interactionTrackingInitialized) return;
+            this.interactionEvents.forEach(name =>
+                document.removeEventListener(name, this.boundRecordInteraction, true));
             this.interactionTrackingInitialized = false;
+        }
+
+        // -------- SPA 导航处理 --------
+        setupNavigationTracking() {
+            if (this.navigationTrackingInitialized) return;
+            this._patchHistory();
+            window.addEventListener('popstate', this.boundHandleNavigation);
+            window.addEventListener('bilispeeder:locationchange', this.boundHandleNavigation);
+            this.navigationTrackingInitialized = true;
+        }
+
+        teardownNavigationTracking() {
+            if (!this.navigationTrackingInitialized) return;
+            window.removeEventListener('popstate', this.boundHandleNavigation);
+            window.removeEventListener('bilispeeder:locationchange', this.boundHandleNavigation);
+            this.navigationTrackingInitialized = false;
+        }
+
+        _patchHistory() {
+            if (window.__biliSpeederHistoryPatched) return;
+            window.__biliSpeederHistoryPatched = true;
+            const dispatch = () => window.dispatchEvent(new Event('bilispeeder:locationchange'));
+            ['pushState', 'replaceState'].forEach(method => {
+                const original = history[method];
+                if (typeof original !== 'function') return;
+                history[method] = function patched(...args) {
+                    const result = original.apply(this, args);
+                    dispatch();
+                    return result;
+                };
+            });
+        }
+
+        handleNavigation() {
+            if (location.href === this.lastUrl) return;
+            this.lastUrl = location.href;
+            log.info(`导航到 ${location.href}`);
+            this.prepareForNavigation();
+            if (this.enabled) {
+                // 等 B 站更换视频节点
+                setTimeout(() => this.applyVideoSpeed(), this.config.navigationDelay);
+            }
         }
 
         prepareForNavigation() {
             this.clearManualOverrides();
-            this.videoSources.clear();
+            this.videoSources = new WeakMap();
+            this.expectedRates = new WeakMap();
             this.lastUserInteraction = 0;
         }
     }
 
-    // ==================== Toast 通知组件 ====================
+    // ==================== 样式注入（幂等） ====================
+    const injectedStyles = new Set();
+    function injectStylesOnce(key, css) {
+        if (injectedStyles.has(key)) return;
+        injectedStyles.add(key);
+        GM_addStyle(css);
+    }
+
+    // ==================== Toast ====================
     class Toast {
         constructor() {
             this.container = null;
             this.hideTimer = null;
-            this.injectStyles();
-        }
-
-        injectStyles() {
-            GM_addStyle(`
+            injectStylesOnce('toast', `
                 .speed-toast {
                     position: absolute;
                     top: 10%;
@@ -613,20 +545,13 @@
                     pointer-events: none;
                     box-shadow: 0 4px 12px rgba(0,0,0,0.4);
                 }
-                .speed-toast.visible {
-                    opacity: 1;
-                }
+                .speed-toast.visible { opacity: 1; }
             `);
         }
 
-        createContainer(parent = document.body) {
+        ensureContainer(parent) {
             if (this.container && this.container.parentElement === parent) return;
-
-            // 如果容器存在但父元素不同，先移除
-            if (this.container) {
-                this.container.remove();
-            }
-
+            if (this.container) this.container.remove();
             this.container = document.createElement('div');
             this.container.className = 'speed-toast';
             parent.appendChild(this.container);
@@ -636,21 +561,18 @@
             let targetParent = document.body;
             let isFixed = true;
 
-            // 1. 优先检查全屏元素
             if (document.fullscreenElement) {
                 targetParent = document.fullscreenElement;
                 isFixed = false;
-            }
-            // 2. 如果有参考视频元素，尝试挂载到其容器
-            else if (referenceElement) {
-                const videoContainer = DOMUtils.getVideoContainer(referenceElement);
-                if (videoContainer && videoContainer !== document.body) {
-                    targetParent = videoContainer;
+            } else if (referenceElement) {
+                const container = DOMUtils.getVideoContainer(referenceElement);
+                if (container && container !== document.body) {
+                    targetParent = container;
                     isFixed = false;
                 }
             }
 
-            this.createContainer(targetParent);
+            this.ensureContainer(targetParent);
 
             if (isFixed) {
                 this.container.style.position = 'fixed';
@@ -660,26 +582,23 @@
                 this.container.style.top = '10%';
             }
 
-            if (this.hideTimer) {
-                clearTimeout(this.hideTimer);
-            }
-
-            // 简化显示，只显示倍速数值
-            const text = message ? message : `${speed.toFixed(2)}x`;
-            this.container.textContent = text;
-
-            // Force reflow for animation
-            this.container.offsetHeight;
+            if (this.hideTimer) clearTimeout(this.hideTimer);
+            this.container.textContent = message || `${speed.toFixed(2)}x`;
+            // 强制 reflow 以触发过渡
+            void this.container.offsetHeight;
             this.container.classList.add('visible');
-
-            this.hideTimer = setTimeout(() => {
-                this.hide();
-            }, 800);
+            this.hideTimer = setTimeout(() => this.hide(), 800);
         }
 
         hide() {
+            if (this.container) this.container.classList.remove('visible');
+        }
+
+        destroy() {
+            if (this.hideTimer) clearTimeout(this.hideTimer);
             if (this.container) {
-                this.container.classList.remove('visible');
+                this.container.remove();
+                this.container = null;
             }
         }
     }
@@ -691,35 +610,23 @@
             this.toast = toast;
             this.speedStep = 0.25;
             this.boundHandleKeydown = this.handleKeydown.bind(this);
-            this.init();
-        }
-
-        init() {
             document.addEventListener('keydown', this.boundHandleKeydown, true);
-            ErrorHandler.log('info', '键盘快捷键已启用: Shift+> 增加倍速, Shift+< 降低倍速, / 重置');
+            log.info('快捷键已启用: Shift+> 增速, Shift+< 减速, / 重置');
         }
 
         handleKeydown(e) {
-            // 忽略在输入框中的快捷键
-            const tagName = e.target.tagName.toLowerCase();
-            if (tagName === 'input' || tagName === 'textarea' || e.target.isContentEditable) {
-                return;
-            }
+            const target = e.target;
+            const tag = target && target.tagName ? target.tagName.toLowerCase() : '';
+            if (tag === 'input' || tag === 'textarea' || (target && target.isContentEditable)) return;
 
             let handled = false;
-
-            // Shift + > (Shift + .) 增加倍速
             if (e.shiftKey && (e.key === '>' || e.key === '.')) {
                 this.increaseSpeed();
                 handled = true;
-            }
-            // Shift + < (Shift + ,) 降低倍速
-            else if (e.shiftKey && (e.key === '<' || e.key === ',')) {
+            } else if (e.shiftKey && (e.key === '<' || e.key === ',')) {
                 this.decreaseSpeed();
                 handled = true;
-            }
-            // / 重置倍速（不需要 Shift）
-            else if (e.key === '/' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+            } else if (e.key === '/' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
                 this.resetSpeed();
                 handled = true;
             }
@@ -731,41 +638,26 @@
         }
 
         getCurrentVideo() {
-            // 尝试寻找全屏元素下的视频
             if (document.fullscreenElement) {
                 const videoInFs = document.fullscreenElement.querySelector('video');
                 if (videoInFs) return videoInFs;
             }
-            // 否则返回第一个被发现的视频，或者正在播放的视频
             const videos = DOMUtils.findVideoElements();
             if (videos.length === 0) return null;
-
-            // 优先返回正在播放的
-            const playing = videos.find(v => !v.paused);
-            return playing || videos[0];
+            return videos.find(v => !v.paused) || videos[0];
         }
 
-        increaseSpeed() {
-            const newSpeed = Math.min(
-                SPEED_SETTINGS.MAX,
-                Math.round((this.controller.currentSpeed + this.speedStep) * 100) / 100
-            );
-            if (newSpeed !== this.controller.currentSpeed) {
-                this.controller.setSpeed(newSpeed);
+        changeSpeed(delta) {
+            const target = Math.round((this.controller.currentSpeed + delta) * 100) / 100;
+            const clamped = Math.min(SPEED_SETTINGS.MAX, Math.max(SPEED_SETTINGS.MIN, target));
+            if (clamped !== this.controller.currentSpeed) {
+                this.controller.setSpeed(clamped);
             }
-            this.toast.show(null, newSpeed, this.getCurrentVideo());
+            this.toast.show(null, clamped, this.getCurrentVideo());
         }
 
-        decreaseSpeed() {
-            const newSpeed = Math.max(
-                SPEED_SETTINGS.MIN,
-                Math.round((this.controller.currentSpeed - this.speedStep) * 100) / 100
-            );
-            if (newSpeed !== this.controller.currentSpeed) {
-                this.controller.setSpeed(newSpeed);
-            }
-            this.toast.show(null, newSpeed, this.getCurrentVideo());
-        }
+        increaseSpeed() { this.changeSpeed(this.speedStep); }
+        decreaseSpeed() { this.changeSpeed(-this.speedStep); }
 
         resetSpeed() {
             const defaultSpeed = SPEED_SETTINGS.DEFAULT;
@@ -780,38 +672,33 @@
         }
     }
 
-    // ==================== 悬浮设置面板 ====================
+    // ==================== 设置面板 ====================
     class SettingsPanel {
         constructor(controller) {
             this.controller = controller;
             this.panel = null;
+            this.overlay = null;
             this.isVisible = false;
             this.isDragging = false;
             this.dragOffset = { x: 0, y: 0 };
-            this.storageKeys = {
-                position: 'panelPosition'
-            };
+            this.panelSize = { w: 0, h: 0 };
+            this.boundHandleEscape = this.handleEscape.bind(this);
+            this.boundPointerMove = this.drag.bind(this);
+            this.boundPointerUp = this.endDrag.bind(this);
             this.injectStyles();
         }
 
         injectStyles() {
-            GM_addStyle(`
+            injectStylesOnce('panel', `
                 .speed-panel-overlay {
-                    position: fixed;
-                    top: 0;
-                    left: 0;
-                    width: 100%;
-                    height: 100%;
+                    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
                     background: rgba(0, 0, 0, 0.5);
                     z-index: 999998;
                     opacity: 0;
                     transition: opacity 0.15s ease;
                     pointer-events: none;
                 }
-                .speed-panel-overlay.visible {
-                    opacity: 1;
-                    pointer-events: auto;
-                }
+                .speed-panel-overlay.visible { opacity: 1; pointer-events: auto; }
                 .speed-panel {
                     position: fixed;
                     z-index: 999999;
@@ -827,152 +714,74 @@
                     pointer-events: none;
                     user-select: none;
                 }
-                .speed-panel.visible {
-                    opacity: 1;
-                    transform: scale(1);
-                    pointer-events: auto;
-                }
+                .speed-panel.visible { opacity: 1; transform: scale(1); pointer-events: auto; }
                 .speed-panel-header {
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                    padding: 12px 16px;
-                    border-bottom: 1px solid #333;
-                    cursor: move;
+                    display: flex; justify-content: space-between; align-items: center;
+                    padding: 12px 16px; border-bottom: 1px solid #333; cursor: move;
+                    touch-action: none;
                 }
-                .speed-panel-title {
-                    font-size: 13px;
-                    font-weight: 500;
-                    color: #fff;
-                }
+                .speed-panel-title { font-size: 13px; font-weight: 500; color: #fff; }
                 .speed-panel-close {
-                    width: 20px;
-                    height: 20px;
-                    border: none;
-                    background: transparent;
-                    color: #888;
-                    border-radius: 4px;
-                    cursor: pointer;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    font-size: 14px;
-                    transition: color 0.1s ease;
+                    width: 20px; height: 20px; border: none; background: transparent;
+                    color: #888; border-radius: 4px; cursor: pointer;
+                    display: flex; align-items: center; justify-content: center;
+                    font-size: 14px; transition: color 0.1s ease;
                 }
-                .speed-panel-close:hover {
-                    color: #fff;
-                }
-                .speed-panel-body {
-                    padding: 16px;
-                }
-                .speed-display {
-                    text-align: center;
-                    margin-bottom: 16px;
-                }
-                .speed-display-value {
-                    font-size: 32px;
-                    font-weight: 600;
-                    color: #fff;
-                    line-height: 1.2;
-                }
-                .speed-display-label {
-                    font-size: 11px;
-                    color: #888;
-                    margin-top: 4px;
-                }
-                .speed-slider-container {
-                    margin-bottom: 16px;
-                }
+                .speed-panel-close:hover { color: #fff; }
+                .speed-panel-body { padding: 16px; }
+                .speed-display { text-align: center; margin-bottom: 16px; }
+                .speed-display-value { font-size: 32px; font-weight: 600; color: #fff; line-height: 1.2; }
+                .speed-display-label { font-size: 11px; color: #888; margin-top: 4px; }
+                .speed-slider-container { margin-bottom: 16px; }
                 .speed-slider {
-                    -webkit-appearance: none;
-                    appearance: none;
-                    width: 100%;
-                    height: 4px;
+                    -webkit-appearance: none; appearance: none; width: 100%; height: 4px;
                     border-radius: 2px;
                     background: linear-gradient(90deg, #fff 0%, #fff var(--progress), #444 var(--progress), #444 100%);
-                    outline: none;
-                    cursor: pointer;
+                    outline: none; cursor: pointer;
                 }
                 .speed-slider::-webkit-slider-thumb {
-                    -webkit-appearance: none;
-                    appearance: none;
-                    width: 14px;
-                    height: 14px;
-                    border-radius: 50%;
-                    background: #fff;
-                    cursor: pointer;
+                    -webkit-appearance: none; appearance: none; width: 14px; height: 14px;
+                    border-radius: 50%; background: #fff; cursor: pointer;
                     transition: transform 0.1s ease;
                 }
-                .speed-slider::-webkit-slider-thumb:hover {
-                    transform: scale(1.2);
-                }
+                .speed-slider::-webkit-slider-thumb:hover { transform: scale(1.2); }
                 .speed-slider::-moz-range-thumb {
-                    width: 14px;
-                    height: 14px;
-                    border-radius: 50%;
-                    background: #fff;
-                    cursor: pointer;
-                    border: none;
+                    width: 14px; height: 14px; border-radius: 50%; background: #fff;
+                    cursor: pointer; border: none;
                 }
                 .speed-slider-labels {
-                    display: flex;
-                    justify-content: space-between;
-                    margin-top: 6px;
-                    font-size: 10px;
-                    color: #666;
+                    display: flex; justify-content: space-between; margin-top: 6px;
+                    font-size: 10px; color: #666;
                 }
-                .speed-presets {
-                    display: grid;
-                    grid-template-columns: repeat(4, 1fr);
-                    gap: 6px;
-                }
+                .speed-presets { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
                 .speed-preset-btn {
-                    padding: 8px 6px;
-                    border: none;
-                    background: #333;
-                    color: #aaa;
-                    border-radius: 4px;
-                    cursor: pointer;
-                    font-size: 12px;
-                    font-weight: 500;
+                    padding: 8px 6px; border: none; background: #333; color: #aaa;
+                    border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 500;
                     transition: all 0.1s ease;
                 }
-                .speed-preset-btn:hover {
-                    background: #444;
-                    color: #fff;
-                }
-                .speed-preset-btn.active {
-                    background: #fff;
-                    color: #212121;
-                }
+                .speed-preset-btn:hover { background: #444; color: #fff; }
+                .speed-preset-btn.active { background: #fff; color: #212121; }
                 .speed-panel-footer {
-                    padding: 10px 16px;
-                    border-top: 1px solid #333;
-                    display: flex;
-                    justify-content: center;
+                    padding: 10px 16px; border-top: 1px solid #333;
+                    display: flex; justify-content: center;
                 }
-                .speed-footer-hint {
-                    font-size: 10px;
-                    color: #666;
-                }
+                .speed-footer-hint { font-size: 10px; color: #666; }
             `);
         }
 
         createPanel() {
             if (this.panel) return;
 
-            // Create overlay
             this.overlay = document.createElement('div');
             this.overlay.className = 'speed-panel-overlay';
             this.overlay.addEventListener('click', () => this.hide());
 
-            // Create panel
             this.panel = document.createElement('div');
             this.panel.className = 'speed-panel';
             this.panel.innerHTML = `
                 <div class="speed-panel-header">
                     <div class="speed-panel-title">B站视频倍速器</div>
-                    <button class="speed-panel-close">✕</button>
+                    <button class="speed-panel-close" aria-label="关闭">✕</button>
                 </div>
                 <div class="speed-panel-body">
                     <div class="speed-display">
@@ -980,10 +789,10 @@
                         <div class="speed-display-label">当前播放速度</div>
                     </div>
                     <div class="speed-slider-container">
-                        <input type="range" class="speed-slider" 
-                               min="${SPEED_SETTINGS.MIN}" 
-                               max="${SPEED_SETTINGS.MAX}" 
-                               step="0.05" 
+                        <input type="range" class="speed-slider"
+                               min="${SPEED_SETTINGS.MIN}"
+                               max="${SPEED_SETTINGS.MAX}"
+                               step="0.05"
                                value="${this.controller.currentSpeed}">
                         <div class="speed-slider-labels">
                             <span>${SPEED_SETTINGS.MIN}x</span>
@@ -993,9 +802,9 @@
                         </div>
                     </div>
                     <div class="speed-presets">
-                        ${SPEED_SETTINGS.PRESETS.map(speed => `
-                            <button class="speed-preset-btn ${speed === this.controller.currentSpeed ? 'active' : ''}" 
-                                    data-speed="${speed}">${speed}x</button>
+                        ${SPEED_SETTINGS.PRESETS.map(s => `
+                            <button class="speed-preset-btn ${s === this.controller.currentSpeed ? 'active' : ''}"
+                                    data-speed="${s}">${s}x</button>
                         `).join('')}
                     </div>
                 </div>
@@ -1013,11 +822,9 @@
         }
 
         setupEventListeners() {
-            // Close button
-            const closeBtn = this.panel.querySelector('.speed-panel-close');
-            closeBtn.addEventListener('click', () => this.hide());
+            this.panel.querySelector('.speed-panel-close')
+                .addEventListener('click', () => this.hide());
 
-            // Slider
             const slider = this.panel.querySelector('.speed-slider');
             slider.addEventListener('input', (e) => {
                 const speed = parseFloat(e.target.value);
@@ -1027,9 +834,7 @@
                 this.updateSliderProgress();
             });
 
-            // Preset buttons
-            const presetBtns = this.panel.querySelectorAll('.speed-preset-btn');
-            presetBtns.forEach(btn => {
+            this.panel.querySelectorAll('.speed-preset-btn').forEach(btn => {
                 btn.addEventListener('click', () => {
                     const speed = parseFloat(btn.dataset.speed);
                     this.controller.setSpeed(speed);
@@ -1039,72 +844,63 @@
                 });
             });
 
-            // Drag functionality
             const header = this.panel.querySelector('.speed-panel-header');
-            header.addEventListener('mousedown', (e) => this.startDrag(e));
-            document.addEventListener('mousemove', (e) => this.drag(e));
-            document.addEventListener('mouseup', () => this.endDrag());
-
-            // Keyboard shortcut to close
-            document.addEventListener('keydown', (e) => {
-                if (e.key === 'Escape' && this.isVisible) {
-                    this.hide();
-                }
-            });
+            header.addEventListener('pointerdown', (e) => this.startDrag(e));
         }
 
         startDrag(e) {
             if (e.target.classList.contains('speed-panel-close')) return;
             this.isDragging = true;
             const rect = this.panel.getBoundingClientRect();
-            this.dragOffset = {
-                x: e.clientX - rect.left,
-                y: e.clientY - rect.top
-            };
+            // 缓存尺寸，避免拖动过程中反复读引发布局重排
+            this.panelSize.w = rect.width;
+            this.panelSize.h = rect.height;
+            this.dragOffset.x = e.clientX - rect.left;
+            this.dragOffset.y = e.clientY - rect.top;
             this.panel.style.transition = 'none';
+            try { e.currentTarget.setPointerCapture(e.pointerId); } catch (_) { /* ignore */ }
+            e.currentTarget.addEventListener('pointermove', this.boundPointerMove);
+            e.currentTarget.addEventListener('pointerup', this.boundPointerUp);
+            e.currentTarget.addEventListener('pointercancel', this.boundPointerUp);
         }
 
         drag(e) {
             if (!this.isDragging) return;
-            const x = Math.max(0, Math.min(window.innerWidth - this.panel.offsetWidth, e.clientX - this.dragOffset.x));
-            const y = Math.max(0, Math.min(window.innerHeight - this.panel.offsetHeight, e.clientY - this.dragOffset.y));
+            const x = Math.max(0, Math.min(window.innerWidth - this.panelSize.w, e.clientX - this.dragOffset.x));
+            const y = Math.max(0, Math.min(window.innerHeight - this.panelSize.h, e.clientY - this.dragOffset.y));
             this.panel.style.left = `${x}px`;
             this.panel.style.top = `${y}px`;
             this.panel.style.right = 'auto';
             this.panel.style.bottom = 'auto';
         }
 
-        endDrag() {
+        endDrag(e) {
             if (!this.isDragging) return;
             this.isDragging = false;
             this.panel.style.transition = '';
+            const target = e && e.currentTarget;
+            if (target) {
+                target.removeEventListener('pointermove', this.boundPointerMove);
+                target.removeEventListener('pointerup', this.boundPointerUp);
+                target.removeEventListener('pointercancel', this.boundPointerUp);
+                try { target.releasePointerCapture(e.pointerId); } catch (_) { /* ignore */ }
+            }
             this.savePosition();
         }
 
         savePosition() {
             const rect = this.panel.getBoundingClientRect();
-            Storage.set(this.storageKeys.position, JSON.stringify({
-                x: rect.left,
-                y: rect.top
-            }));
+            Storage.set(STORAGE_KEYS.panelPosition, { x: rect.left, y: rect.top });
         }
 
         restorePosition() {
-            try {
-                const saved = Storage.get(this.storageKeys.position, null);
-                if (saved) {
-                    const pos = JSON.parse(saved);
-                    const x = Math.max(0, Math.min(window.innerWidth - this.panel.offsetWidth, pos.x));
-                    const y = Math.max(0, Math.min(window.innerHeight - this.panel.offsetHeight, pos.y));
-                    this.panel.style.left = `${x}px`;
-                    this.panel.style.top = `${y}px`;
-                } else {
-                    // Default position: center of screen
-                    this.panel.style.left = '50%';
-                    this.panel.style.top = '50%';
-                    this.panel.style.transform = 'translate(-50%, -50%)';
-                }
-            } catch {
+            const saved = Storage.get(STORAGE_KEYS.panelPosition, null);
+            if (saved && typeof saved.x === 'number' && typeof saved.y === 'number') {
+                const x = Math.max(0, Math.min(window.innerWidth - this.panel.offsetWidth, saved.x));
+                const y = Math.max(0, Math.min(window.innerHeight - this.panel.offsetHeight, saved.y));
+                this.panel.style.left = `${x}px`;
+                this.panel.style.top = `${y}px`;
+            } else {
                 this.panel.style.left = '50%';
                 this.panel.style.top = '50%';
                 this.panel.style.transform = 'translate(-50%, -50%)';
@@ -1113,9 +909,7 @@
 
         updateSpeedDisplay() {
             const display = this.panel.querySelector('.speed-display-value');
-            if (display) {
-                display.textContent = `${this.controller.currentSpeed.toFixed(2)}x`;
-            }
+            if (display) display.textContent = `${this.controller.currentSpeed.toFixed(2)}x`;
         }
 
         updateSlider() {
@@ -1128,30 +922,31 @@
 
         updateSliderProgress() {
             const slider = this.panel.querySelector('.speed-slider');
-            if (slider) {
-                const progress = ((this.controller.currentSpeed - SPEED_SETTINGS.MIN) / (SPEED_SETTINGS.MAX - SPEED_SETTINGS.MIN)) * 100;
-                slider.style.setProperty('--progress', `${progress}%`);
-            }
+            if (!slider) return;
+            const progress = ((this.controller.currentSpeed - SPEED_SETTINGS.MIN) /
+                (SPEED_SETTINGS.MAX - SPEED_SETTINGS.MIN)) * 100;
+            slider.style.setProperty('--progress', `${progress}%`);
         }
 
         updatePresetButtons() {
-            const btns = this.panel.querySelectorAll('.speed-preset-btn');
-            btns.forEach(btn => {
+            this.panel.querySelectorAll('.speed-preset-btn').forEach(btn => {
                 const speed = parseFloat(btn.dataset.speed);
                 btn.classList.toggle('active', Math.abs(speed - this.controller.currentSpeed) < 0.01);
             });
         }
 
+        handleEscape(e) {
+            if (e.key === 'Escape' && this.isVisible) this.hide();
+        }
+
         show() {
-            if (!this.panel) {
-                this.createPanel();
-            }
+            if (!this.panel) this.createPanel();
             this.updateSpeedDisplay();
             this.updateSlider();
             this.updatePresetButtons();
 
-            // Reset transform if using center positioning
-            if (this.panel.style.transform.includes('translate')) {
+            // 从居中 transform 切到绝对坐标，保证拖动从正确位置开始
+            if (this.panel.style.transform && this.panel.style.transform.includes('translate')) {
                 const rect = this.panel.getBoundingClientRect();
                 this.panel.style.left = `${rect.left}px`;
                 this.panel.style.top = `${rect.top}px`;
@@ -1163,33 +958,73 @@
                 this.panel.classList.add('visible');
             });
             this.isVisible = true;
+            document.addEventListener('keydown', this.boundHandleEscape);
         }
 
         hide() {
             if (this.overlay) this.overlay.classList.remove('visible');
             if (this.panel) this.panel.classList.remove('visible');
             this.isVisible = false;
+            document.removeEventListener('keydown', this.boundHandleEscape);
         }
 
-        toggle() {
-            if (this.isVisible) {
-                this.hide();
-            } else {
-                this.show();
-            }
+        toggle() { this.isVisible ? this.hide() : this.show(); }
+
+        destroy() {
+            this.hide();
+            if (this.panel) { this.panel.remove(); this.panel = null; }
+            if (this.overlay) { this.overlay.remove(); this.overlay = null; }
         }
     }
 
-    // ==================== 平台检测与配置 ====================
-    function detectPlatform() {
-        const hostname = window.location.hostname;
-        if (hostname.includes('bilibili.com')) {
-            return 'bilibili';
+    // ==================== 菜单 ====================
+    class MenuManager {
+        constructor(controller, settingsPanel) {
+            this.controller = controller;
+            this.settingsPanel = settingsPanel;
+            this.menuIds = [];
+            this.canUnregister = typeof GM_unregisterMenuCommand === 'function';
+            this.register();
+            // 状态变化时重新注册菜单，让标题反映最新值
+            this.controller.onStateChange = () => this.refresh();
         }
-        return null;
+
+        register() {
+            const c = this.controller;
+            const add = (title, fn) => {
+                const id = GM_registerMenuCommand(title, fn);
+                if (id !== undefined) this.menuIds.push(id);
+            };
+
+            add(`📊 当前状态: ${c.enabled ? c.currentSpeed + 'x' : '已禁用'}`, () => {
+                const s = c.getStatus();
+                alert(
+                    `B站视频倍速控制器\n\n` +
+                    `状态: ${s.enabled ? '启用' : '禁用'}\n` +
+                    `当前速度: ${s.currentSpeed}x\n` +
+                    `检测到视频: ${s.videoCount} 个\n\n` +
+                    `快捷键:\n` +
+                    `Shift + >  增加倍速\n` +
+                    `Shift + <  降低倍速\n` +
+                    `/  重置倍速`
+                );
+            });
+
+            add(`⚡ ${c.enabled ? '禁用' : '启用'}倍速功能`, () => c.setEnabled(!c.enabled));
+            add('⚙️ 打开设置面板', () => this.settingsPanel.show());
+        }
+
+        refresh() {
+            if (!this.canUnregister) return; // 旧版 Tampermonkey 不支持，忽略
+            this.menuIds.forEach(id => {
+                try { GM_unregisterMenuCommand(id); } catch (_) { /* ignore */ }
+            });
+            this.menuIds = [];
+            this.register();
+        }
     }
 
-    // B站配置
+    // ==================== B 站配置 ====================
     const bilibiliConfig = {
         targetSelector: [
             '.bpx-player-video-area',
@@ -1204,85 +1039,37 @@
             attributes: true,
             attributeFilter: ['src', 'class', 'style', 'data-loaded']
         },
-        maxObserverDepth: 6,
-        deepTargetWarningThreshold: 9,
         debounceDelay: 500,
-        defaultSpeed: SPEED_SETTINGS.PLATFORM_DEFAULTS.bilibili,
+        defaultSpeed: SPEED_SETTINGS.BILIBILI_DEFAULT,
         defaultEnabled: true
     };
 
-
-    // ==================== 油猴菜单命令 ====================
-    function registerMenuCommands(controller) {
-        // 创建 Toast 通知
-        const toast = new Toast();
-
-        // 创建设置面板
-        const settingsPanel = new SettingsPanel(controller);
-
-        // 创建键盘快捷键
-        const keyboardShortcuts = new KeyboardShortcuts(controller, toast);
-
-        // 显示当前状态
-        GM_registerMenuCommand(`📊 当前状态: ${controller.enabled ? controller.currentSpeed + 'x' : '已禁用'}`, () => {
-            const status = controller.getStatus();
-            alert(`B站视频倍速控制器\n\n` +
-                `状态: ${status.enabled ? '启用' : '禁用'}\n` +
-                `当前速度: ${status.currentSpeed}x\n` +
-                `检测到视频: ${status.videoCount} 个\n\n` +
-                `快捷键:\n` +
-                `Shift + >  增加倍速\n` +
-                `Shift + <  降低倍速\n` +
-                `/  重置倍速`);
-        });
-
-        // 启用/禁用
-        GM_registerMenuCommand(`⚡ ${controller.enabled ? '禁用' : '启用'}倍速功能`, () => {
-            controller.setEnabled(!controller.enabled);
-        });
-
-        // 打开设置面板
-        GM_registerMenuCommand('⚙️ 打开设置面板', () => {
-            settingsPanel.show();
-        });
-
-        return { toast, settingsPanel, keyboardShortcuts };
-    }
-
-    // ==================== 主初始化 ====================
+    // ==================== 主流程 ====================
     function main() {
-        const platform = detectPlatform();
-        if (!platform) {
-            ErrorHandler.log('warn', '无法识别当前平台');
-            return;
-        }
+        const controller = new VideoSpeedController(bilibiliConfig);
 
-        const config = bilibiliConfig;
-        const controller = new VideoSpeedController(platform, config);
-
-        // 初始化控制器
         controller.initialize().then(() => {
-            // 注册油猴菜单
-            registerMenuCommands(controller);
-        }).catch(error => {
-            ErrorHandler.log('error', `${platform} 控制器初始化失败`, error);
-        });
+            const toast = new Toast();
+            const settingsPanel = new SettingsPanel(controller);
+            const keyboardShortcuts = new KeyboardShortcuts(controller, toast);
+            const menu = new MenuManager(controller, settingsPanel);
 
-        // 页面卸载时清理
-        window.addEventListener('beforeunload', () => {
-            if (controller) {
+            // pagehide 在 BFCache / SPA 情境下比 beforeunload 更可靠
+            window.addEventListener('pagehide', () => {
+                keyboardShortcuts.destroy();
+                settingsPanel.destroy();
+                toast.destroy();
                 controller.destroy();
-            }
+            }, { once: true });
+
+            log.info('启动完成');
+            // 避免未使用警告
+            void menu;
+        }).catch(error => {
+            log.error('启动失败', error);
         });
-
-        ErrorHandler.log('info', `${platform} 油猴脚本启动完成`);
     }
 
-    // 启动
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', main);
-    } else {
-        main();
-    }
-
+    // @run-at document-idle 已保证 DOM 就绪
+    main();
 })();

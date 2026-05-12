@@ -63,6 +63,17 @@
 
 ## 📝 更新日志
 
+### v1.5.0 (2026-05-12)
+- **修复手动倍速检测竞争条件**：改用 `expectedRates` 映射识别脚本自身的 `ratechange`，避免误判为用户操作
+- **SPA 路由适配**：监听 `pushState`/`replaceState`/`popstate`，切换视频时自动重置状态并重新应用倍速
+- **存储写入防抖**：拖动滑杆时不再每次 input 都同步写入 `GM_setValue`
+- **内存优化**：`observedVideos`/`videoSources`/`manualOverrides` 改用 WeakSet/WeakMap，允许视频元素被 GC
+- **卸载清理**：`pagehide` 时销毁设置面板、Toast、快捷键监听，替换不可靠的 `beforeunload`
+- **拖动改用 Pointer Events**：支持触控/触控板，`setPointerCapture` 防止鼠标移出窗口时卡住
+- **菜单标题动态刷新**：状态变化后重新注册菜单项
+- **样式注入幂等**：避免重复注入
+- **清理 YouTube 遗留**：移除多平台抽象与无效代码
+
 ### v1.4.2 (2026-01-29)
 - **Toast 提示优化**：增大尺寸、字体和边距，提升清晰度
 
