@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         B站视频倍速器
 // @namespace    https://github.com/codertesla/bilibili-video-speed-controller-userscript
-// @version      1.5.0
-// @description  自由设定 Bilibili 视频的默认播放速度。支持记住设置、自动应用、手动倍速检测、键盘快捷键控制、SPA 切换。
+// @version      1.6.0
+// @description  自由设定 Bilibili 视频的默认播放速度。支持原生倍速菜单增强、0.05x 精细调速、记住设置、自动应用、键盘快捷键和 SPA 切换。
 // @author       codertesla
 // @match        *://*.bilibili.com/video/*
 // @match        *://*.bilibili.com/bangumi/*
@@ -26,10 +26,17 @@
     const SPEED_SETTINGS = {
         MIN: 0.1,
         MAX: 3.0,
+        STEP: 0.05,
         DEFAULT: 1.0,
         DEFAULT_ENABLED: true,
         BILIBILI_DEFAULT: 1.5,
         PRESETS: [0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0]
+    };
+
+    const BILIBILI_SELECTORS = {
+        speedMenu: '.bpx-player-ctrl-playbackrate-menu',
+        speedButton: '.bpx-player-ctrl-playbackrate',
+        speedResult: '.bpx-player-ctrl-playbackrate-result'
     };
 
     const STORAGE_KEYS = {
@@ -88,6 +95,18 @@
         isValidSpeed(speed) {
             return typeof speed === 'number' && !Number.isNaN(speed) &&
                 speed >= SPEED_SETTINGS.MIN && speed <= SPEED_SETTINGS.MAX;
+        },
+
+        normalizeSpeed(speed) {
+            const numeric = typeof speed === 'number' ? speed : parseFloat(speed);
+            if (!Number.isFinite(numeric)) return SPEED_SETTINGS.DEFAULT;
+            const stepped = Math.round(numeric / SPEED_SETTINGS.STEP) * SPEED_SETTINGS.STEP;
+            const clamped = Math.min(SPEED_SETTINGS.MAX, Math.max(SPEED_SETTINGS.MIN, stepped));
+            return Number(clamped.toFixed(2));
+        },
+
+        formatSpeed(speed) {
+            return `${DOMUtils.normalizeSpeed(speed).toFixed(2)}x`;
         },
 
         findOptimalObserverTarget(selectors) {
@@ -168,7 +187,8 @@
 
             this.applyTimer = null;
             this.saveTimer = null;
-            this.onStateChange = null; // 供外部订阅（刷新菜单）
+            this.stateListeners = [];
+            this.onStateChange = null; // 兼容旧的单订阅写法
         }
 
         async initialize() {
@@ -215,14 +235,15 @@
         }
 
         setSpeed(newSpeed) {
-            if (!DOMUtils.isValidSpeed(newSpeed)) return;
-            if (Math.abs(this.currentSpeed - newSpeed) < 0.001) return;
+            const normalizedSpeed = DOMUtils.normalizeSpeed(newSpeed);
+            if (!DOMUtils.isValidSpeed(normalizedSpeed)) return;
+            if (Math.abs(this.currentSpeed - normalizedSpeed) < 0.001) return;
 
-            this.currentSpeed = newSpeed;
+            this.currentSpeed = normalizedSpeed;
             this.saveSettings();
             this.clearManualOverrides();
             if (this.enabled) this.applyVideoSpeed();
-            log.info(`速度设置为 ${newSpeed}x`);
+            log.info(`速度设置为 ${normalizedSpeed}x`);
             this.emitStateChange();
         }
 
@@ -243,9 +264,21 @@
         }
 
         emitStateChange() {
+            const status = this.getStatus();
             if (typeof this.onStateChange === 'function') {
-                try { this.onStateChange(this.getStatus()); } catch (e) { /* ignore */ }
+                try { this.onStateChange(status); } catch (e) { /* ignore */ }
             }
+            this.stateListeners.forEach(listener => {
+                try { listener(status); } catch (e) { /* ignore */ }
+            });
+        }
+
+        addStateListener(listener) {
+            if (typeof listener !== 'function') return () => {};
+            this.stateListeners.push(listener);
+            return () => {
+                this.stateListeners = this.stateListeners.filter(item => item !== listener);
+            };
         }
 
         debounceApply() {
@@ -376,6 +409,7 @@
         }
 
         setVideoPlaybackRate(video, speed) {
+            speed = DOMUtils.normalizeSpeed(speed);
             if (!video || !DOMUtils.isValidSpeed(speed)) return false;
             if (typeof video.playbackRate !== 'number') return false;
             if (Math.abs(video.playbackRate - speed) < 0.001) {
@@ -608,7 +642,7 @@
         constructor(controller, toast) {
             this.controller = controller;
             this.toast = toast;
-            this.speedStep = 0.25;
+            this.speedStep = SPEED_SETTINGS.STEP;
             this.boundHandleKeydown = this.handleKeydown.bind(this);
             document.addEventListener('keydown', this.boundHandleKeydown, true);
             log.info('快捷键已启用: Shift+> 增速, Shift+< 减速, / 重置');
@@ -648,8 +682,7 @@
         }
 
         changeSpeed(delta) {
-            const target = Math.round((this.controller.currentSpeed + delta) * 100) / 100;
-            const clamped = Math.min(SPEED_SETTINGS.MAX, Math.max(SPEED_SETTINGS.MIN, target));
+            const clamped = DOMUtils.normalizeSpeed(this.controller.currentSpeed + delta);
             if (clamped !== this.controller.currentSpeed) {
                 this.controller.setSpeed(clamped);
             }
@@ -685,6 +718,7 @@
             this.boundHandleEscape = this.handleEscape.bind(this);
             this.boundPointerMove = this.drag.bind(this);
             this.boundPointerUp = this.endDrag.bind(this);
+            this.unsubscribe = this.controller.addStateListener(() => this.syncFromController());
             this.injectStyles();
         }
 
@@ -792,7 +826,7 @@
                         <input type="range" class="speed-slider"
                                min="${SPEED_SETTINGS.MIN}"
                                max="${SPEED_SETTINGS.MAX}"
-                               step="0.05"
+                               step="${SPEED_SETTINGS.STEP}"
                                value="${this.controller.currentSpeed}">
                         <div class="speed-slider-labels">
                             <span>${SPEED_SETTINGS.MIN}x</span>
@@ -935,6 +969,13 @@
             });
         }
 
+        syncFromController() {
+            if (!this.panel) return;
+            this.updateSpeedDisplay();
+            this.updateSlider();
+            this.updatePresetButtons();
+        }
+
         handleEscape(e) {
             if (e.key === 'Escape' && this.isVisible) this.hide();
         }
@@ -971,9 +1012,277 @@
         toggle() { this.isVisible ? this.hide() : this.show(); }
 
         destroy() {
+            if (this.unsubscribe) this.unsubscribe();
             this.hide();
             if (this.panel) { this.panel.remove(); this.panel = null; }
             if (this.overlay) { this.overlay.remove(); this.overlay = null; }
+        }
+    }
+
+    // ==================== B站原生倍速菜单增强 ====================
+    class NativeSpeedMenu {
+        constructor(controller, settingsPanel) {
+            this.controller = controller;
+            this.settingsPanel = settingsPanel;
+            this.menu = null;
+            this.slider = null;
+            this.value = null;
+            this.observer = null;
+            this.refreshTimer = null;
+            this.unsubscribe = this.controller.addStateListener(() => this.sync());
+            this.injectStyles();
+            this.setupObserver();
+            this.scheduleAttach();
+        }
+
+        injectStyles() {
+            injectStylesOnce('native-menu', `
+                .bilispeeder-native-menu {
+                    width: 320px !important;
+                    padding: 0 !important;
+                    overflow: hidden !important;
+                    background: rgba(30, 30, 30, 0.96) !important;
+                    border-radius: 8px !important;
+                    color: #fff !important;
+                    box-sizing: border-box !important;
+                }
+                .bilispeeder-native-panel {
+                    padding: 12px 14px 14px;
+                    box-sizing: border-box;
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                    cursor: default;
+                }
+                .bilispeeder-native-header {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 12px;
+                    margin-bottom: 10px;
+                }
+                .bilispeeder-native-title {
+                    font-size: 14px;
+                    font-weight: 600;
+                    line-height: 1;
+                }
+                .bilispeeder-native-value {
+                    font-size: 22px;
+                    font-weight: 700;
+                    line-height: 1;
+                }
+                .bilispeeder-native-controls {
+                    display: grid;
+                    grid-template-columns: 36px minmax(0, 1fr) 36px;
+                    gap: 10px;
+                    align-items: center;
+                    margin-bottom: 12px;
+                }
+                .bilispeeder-native-round,
+                .bilispeeder-native-preset,
+                .bilispeeder-native-settings {
+                    border: 0;
+                    color: #fff;
+                    background: rgba(255, 255, 255, 0.15);
+                    cursor: pointer;
+                    transition: background 0.12s ease, color 0.12s ease;
+                    font-family: inherit;
+                }
+                .bilispeeder-native-round:hover,
+                .bilispeeder-native-preset:hover,
+                .bilispeeder-native-settings:hover {
+                    background: rgba(255, 255, 255, 0.24);
+                }
+                .bilispeeder-native-round {
+                    width: 36px;
+                    height: 36px;
+                    border-radius: 50%;
+                    padding: 0;
+                    font-size: 20px;
+                    line-height: 36px;
+                }
+                .bilispeeder-native-slider {
+                    width: 100%;
+                    min-width: 0;
+                    accent-color: #00aeec;
+                    cursor: pointer;
+                }
+                .bilispeeder-native-presets {
+                    display: grid;
+                    grid-template-columns: repeat(4, minmax(0, 1fr));
+                    gap: 6px;
+                    margin-bottom: 10px;
+                }
+                .bilispeeder-native-preset {
+                    height: 32px;
+                    border-radius: 16px;
+                    padding: 0 6px;
+                    font-size: 12px;
+                    font-weight: 600;
+                }
+                .bilispeeder-native-preset.active {
+                    background: #00aeec;
+                    color: #fff;
+                }
+                .bilispeeder-native-footer {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 8px;
+                }
+                .bilispeeder-native-status {
+                    color: #aaa;
+                    font-size: 11px;
+                    line-height: 1.2;
+                }
+                .bilispeeder-native-settings {
+                    flex: 0 0 auto;
+                    height: 28px;
+                    border-radius: 14px;
+                    padding: 0 10px;
+                    font-size: 12px;
+                }
+            `);
+        }
+
+        setupObserver() {
+            if (this.observer || !document.body) return;
+            this.observer = new MutationObserver(() => this.scheduleAttach());
+            this.observer.observe(document.body, { childList: true, subtree: true });
+        }
+
+        scheduleAttach() {
+            if (this.refreshTimer) clearTimeout(this.refreshTimer);
+            this.refreshTimer = setTimeout(() => this.attach(), 100);
+        }
+
+        attach() {
+            const menu = document.querySelector(BILIBILI_SELECTORS.speedMenu);
+            if (!menu) return;
+            if (menu === this.menu && menu.querySelector('.bilispeeder-native-panel')) {
+                this.sync();
+                return;
+            }
+
+            this.menu = menu;
+            this.render();
+        }
+
+        render() {
+            if (!this.menu) return;
+            this.menu.classList.add('bilispeeder-native-menu');
+            this.menu.innerHTML = '';
+            this.menu.appendChild(this.createPanel());
+            this.sync();
+        }
+
+        createPanel() {
+            const panel = document.createElement('li');
+            panel.className = 'bilispeeder-native-panel';
+            panel.addEventListener('click', event => event.stopPropagation());
+
+            const header = document.createElement('div');
+            header.className = 'bilispeeder-native-header';
+            const title = document.createElement('div');
+            title.className = 'bilispeeder-native-title';
+            title.textContent = '播放速度';
+            this.value = document.createElement('div');
+            this.value.className = 'bilispeeder-native-value';
+            header.appendChild(title);
+            header.appendChild(this.value);
+
+            const controls = document.createElement('div');
+            controls.className = 'bilispeeder-native-controls';
+            controls.appendChild(this.createRoundButton('-', -SPEED_SETTINGS.STEP));
+            this.slider = document.createElement('input');
+            this.slider.className = 'bilispeeder-native-slider';
+            this.slider.type = 'range';
+            this.slider.min = SPEED_SETTINGS.MIN;
+            this.slider.max = SPEED_SETTINGS.MAX;
+            this.slider.step = SPEED_SETTINGS.STEP;
+            this.slider.addEventListener('input', event => {
+                event.stopPropagation();
+                this.controller.setSpeed(parseFloat(event.target.value));
+            });
+            controls.appendChild(this.slider);
+            controls.appendChild(this.createRoundButton('+', SPEED_SETTINGS.STEP));
+
+            const presets = document.createElement('div');
+            presets.className = 'bilispeeder-native-presets';
+            SPEED_SETTINGS.PRESETS.forEach(speed => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'bilispeeder-native-preset';
+                button.dataset.speed = String(speed);
+                button.textContent = `${speed}x`;
+                button.addEventListener('click', event => {
+                    event.stopPropagation();
+                    this.controller.setSpeed(speed);
+                });
+                presets.appendChild(button);
+            });
+
+            const footer = document.createElement('div');
+            footer.className = 'bilispeeder-native-footer';
+            const status = document.createElement('div');
+            status.className = 'bilispeeder-native-status';
+            status.textContent = 'Shift+</> 精细调速';
+            const settings = document.createElement('button');
+            settings.type = 'button';
+            settings.className = 'bilispeeder-native-settings';
+            settings.textContent = '设置面板';
+            settings.addEventListener('click', event => {
+                event.stopPropagation();
+                this.settingsPanel.show();
+            });
+            footer.appendChild(status);
+            footer.appendChild(settings);
+
+            panel.appendChild(header);
+            panel.appendChild(controls);
+            panel.appendChild(presets);
+            panel.appendChild(footer);
+            return panel;
+        }
+
+        createRoundButton(label, delta) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'bilispeeder-native-round';
+            button.textContent = label;
+            button.setAttribute('aria-label', delta > 0 ? '提高倍速' : '降低倍速');
+            button.addEventListener('click', event => {
+                event.stopPropagation();
+                this.controller.setSpeed(this.controller.currentSpeed + delta);
+            });
+            return button;
+        }
+
+        sync() {
+            if (!this.menu || !document.contains(this.menu)) {
+                this.menu = null;
+                this.scheduleAttach();
+                return;
+            }
+            const speedText = DOMUtils.formatSpeed(this.controller.currentSpeed);
+            if (this.value) this.value.textContent = speedText;
+            if (this.slider) this.slider.value = this.controller.currentSpeed;
+            this.menu.querySelectorAll('.bilispeeder-native-preset').forEach(button => {
+                const speed = parseFloat(button.dataset.speed);
+                button.classList.toggle('active', Math.abs(speed - this.controller.currentSpeed) < 0.001);
+            });
+
+            const result = document.querySelector(BILIBILI_SELECTORS.speedResult);
+            if (result) result.textContent = speedText;
+            const speedButton = document.querySelector(BILIBILI_SELECTORS.speedButton);
+            if (speedButton) speedButton.setAttribute('aria-label', speedText);
+        }
+
+        destroy() {
+            if (this.refreshTimer) clearTimeout(this.refreshTimer);
+            if (this.observer) {
+                this.observer.disconnect();
+                this.observer = null;
+            }
+            if (this.unsubscribe) this.unsubscribe();
         }
     }
 
@@ -986,7 +1295,7 @@
             this.canUnregister = typeof GM_unregisterMenuCommand === 'function';
             this.register();
             // 状态变化时重新注册菜单，让标题反映最新值
-            this.controller.onStateChange = () => this.refresh();
+            this.unsubscribe = this.controller.addStateListener(() => this.refresh());
         }
 
         register() {
@@ -1022,6 +1331,15 @@
             this.menuIds = [];
             this.register();
         }
+
+        destroy() {
+            if (this.unsubscribe) this.unsubscribe();
+            if (!this.canUnregister) return;
+            this.menuIds.forEach(id => {
+                try { GM_unregisterMenuCommand(id); } catch (_) { /* ignore */ }
+            });
+            this.menuIds = [];
+        }
     }
 
     // ==================== B 站配置 ====================
@@ -1053,9 +1371,12 @@
             const settingsPanel = new SettingsPanel(controller);
             const keyboardShortcuts = new KeyboardShortcuts(controller, toast);
             const menu = new MenuManager(controller, settingsPanel);
+            const nativeSpeedMenu = new NativeSpeedMenu(controller, settingsPanel);
 
             // pagehide 在 BFCache / SPA 情境下比 beforeunload 更可靠
             window.addEventListener('pagehide', () => {
+                nativeSpeedMenu.destroy();
+                menu.destroy();
                 keyboardShortcuts.destroy();
                 settingsPanel.destroy();
                 toast.destroy();
@@ -1063,8 +1384,6 @@
             }, { once: true });
 
             log.info('启动完成');
-            // 避免未使用警告
-            void menu;
         }).catch(error => {
             log.error('启动失败', error);
         });
