@@ -2,7 +2,7 @@
 // @name         B站视频倍速器
 // @namespace    https://github.com/codertesla/bilibili-video-speed-controller-userscript
 // @version      1.6.0
-// @description  自由设定 Bilibili 视频的默认播放速度。支持原生倍速菜单增强、0.05x 精细调速、记住设置、自动应用、键盘快捷键和 SPA 切换。
+// @description  自由设定 Bilibili 视频的默认播放速度。支持原生倍速菜单增强、0.25x 快捷调速、记住设置、自动应用、键盘快捷键和 SPA 切换。
 // @author       codertesla
 // @match        *://*.bilibili.com/video/*
 // @match        *://*.bilibili.com/bangumi/*
@@ -26,7 +26,7 @@
     const SPEED_SETTINGS = {
         MIN: 0.1,
         MAX: 3.0,
-        STEP: 0.05,
+        STEP: 0.25,
         DEFAULT: 1.0,
         DEFAULT_ENABLED: true,
         BILIBILI_DEFAULT: 1.5,
@@ -1224,7 +1224,7 @@
             footer.className = 'bilispeeder-native-footer';
             const status = document.createElement('div');
             status.className = 'bilispeeder-native-status';
-            status.textContent = 'Shift+</> 精细调速';
+            status.textContent = 'Shift+</> 快捷调速';
             const settings = document.createElement('button');
             settings.type = 'button';
             settings.className = 'bilispeeder-native-settings';
