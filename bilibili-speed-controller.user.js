@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         B站视频倍速器
 // @namespace    https://github.com/codertesla/bilibili-video-speed-controller-userscript
-// @version      1.6.0
+// @version      1.6.1
 // @description  自由设定 Bilibili 视频的默认播放速度。支持原生倍速菜单增强、0.25x 快捷调速、记住设置、自动应用、键盘快捷键和 SPA 切换。
 // @author       codertesla
 // @match        *://*.bilibili.com/video/*
@@ -645,7 +645,7 @@
             this.speedStep = SPEED_SETTINGS.STEP;
             this.boundHandleKeydown = this.handleKeydown.bind(this);
             document.addEventListener('keydown', this.boundHandleKeydown, true);
-            log.info('快捷键已启用: Shift+> 增速, Shift+< 减速, / 重置');
+            log.info('快捷键已启用: Shift+> 增速 0.25x, Shift+< 减速 0.25x, / 重置');
         }
 
         handleKeydown(e) {
@@ -1224,7 +1224,7 @@
             footer.className = 'bilispeeder-native-footer';
             const status = document.createElement('div');
             status.className = 'bilispeeder-native-status';
-            status.textContent = 'Shift+</> 快捷调速';
+            status.textContent = 'Shift+</> 0.25x 调速';
             const settings = document.createElement('button');
             settings.type = 'button';
             settings.className = 'bilispeeder-native-settings';
@@ -1313,8 +1313,8 @@
                     `当前速度: ${s.currentSpeed}x\n` +
                     `检测到视频: ${s.videoCount} 个\n\n` +
                     `快捷键:\n` +
-                    `Shift + >  增加倍速\n` +
-                    `Shift + <  降低倍速\n` +
+                    `Shift + >  增加 0.25x\n` +
+                    `Shift + <  降低 0.25x\n` +
                     `/  重置倍速`
                 );
             });
