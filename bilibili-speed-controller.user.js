@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         B站视频倍速器
 // @namespace    https://github.com/codertesla/bilibili-video-speed-controller-userscript
-// @version      1.6.2
+// @version      1.6.3
 // @description  自由设定 Bilibili 视频的默认播放速度。支持原生倍速菜单增强、0.25x 快捷调速、记住设置、自动应用、键盘快捷键和 SPA 切换。
 // @author       codertesla
 // @match        *://*.bilibili.com/video/*
@@ -1026,6 +1026,8 @@
             this.menu = null;
             this.slider = null;
             this.value = null;
+            this.minusButton = null;
+            this.plusButton = null;
             this.observer = null;
             this.refreshTimer = null;
             this.unsubscribe = this.controller.addStateListener(() => this.sync());
@@ -1037,16 +1039,18 @@
         injectStyles() {
             injectStylesOnce('native-menu', `
                 .bilispeeder-native-menu {
-                    width: 320px !important;
+                    width: 336px !important;
                     padding: 0 !important;
                     overflow: hidden !important;
-                    background: rgba(30, 30, 30, 0.96) !important;
+                    background: rgba(24, 24, 24, 0.96) !important;
                     border-radius: 8px !important;
                     color: #fff !important;
                     box-sizing: border-box !important;
+                    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.34) !important;
+                    backdrop-filter: blur(10px);
                 }
                 .bilispeeder-native-panel {
-                    padding: 12px 14px 14px;
+                    padding: 14px 16px 15px;
                     box-sizing: border-box;
                     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
                     cursor: default;
@@ -1056,27 +1060,36 @@
                     align-items: center;
                     justify-content: space-between;
                     gap: 12px;
-                    margin-bottom: 10px;
+                    margin-bottom: 12px;
                 }
                 .bilispeeder-native-title {
-                    font-size: 14px;
+                    font-size: 15px;
                     font-weight: 600;
-                    line-height: 1;
+                    line-height: 1.2;
+                }
+                .bilispeeder-native-subtitle {
+                    margin-top: 3px;
+                    color: #aaa;
+                    font-size: 11px;
+                    font-weight: 400;
+                    line-height: 1.2;
                 }
                 .bilispeeder-native-value {
-                    font-size: 22px;
+                    font-size: 28px;
                     font-weight: 700;
                     line-height: 1;
+                    font-variant-numeric: tabular-nums;
                 }
                 .bilispeeder-native-controls {
                     display: grid;
                     grid-template-columns: 36px minmax(0, 1fr) 36px;
-                    gap: 10px;
+                    gap: 12px;
                     align-items: center;
-                    margin-bottom: 12px;
+                    margin-bottom: 10px;
                 }
                 .bilispeeder-native-round,
-                .bilispeeder-native-preset {
+                .bilispeeder-native-preset,
+                .bilispeeder-native-reset {
                     border: 0;
                     color: #fff;
                     background: rgba(255, 255, 255, 0.15);
@@ -1085,8 +1098,13 @@
                     font-family: inherit;
                 }
                 .bilispeeder-native-round:hover,
-                .bilispeeder-native-preset:hover {
+                .bilispeeder-native-preset:hover,
+                .bilispeeder-native-reset:hover {
                     background: rgba(255, 255, 255, 0.24);
+                }
+                .bilispeeder-native-round:disabled {
+                    opacity: 0.35;
+                    cursor: not-allowed;
                 }
                 .bilispeeder-native-round {
                     width: 36px;
@@ -1096,34 +1114,86 @@
                     font-size: 20px;
                     line-height: 36px;
                 }
-                .bilispeeder-native-slider {
-                    width: 100%;
+                .bilispeeder-native-slider-wrap {
                     min-width: 0;
-                    accent-color: #00aeec;
+                }
+                .bilispeeder-native-slider {
+                    -webkit-appearance: none;
+                    appearance: none;
+                    width: 100%;
+                    height: 4px;
+                    min-width: 0;
+                    margin: 0;
+                    border-radius: 999px;
+                    background: linear-gradient(90deg, #00aeec 0%, #00aeec var(--progress), rgba(255, 255, 255, 0.28) var(--progress), rgba(255, 255, 255, 0.28) 100%);
+                    outline: none;
                     cursor: pointer;
+                }
+                .bilispeeder-native-slider::-webkit-slider-thumb {
+                    -webkit-appearance: none;
+                    appearance: none;
+                    width: 17px;
+                    height: 17px;
+                    border: 2px solid #fff;
+                    border-radius: 50%;
+                    background: #00aeec;
+                    box-shadow: 0 2px 8px rgba(0, 174, 236, 0.5);
+                }
+                .bilispeeder-native-slider::-moz-range-thumb {
+                    width: 15px;
+                    height: 15px;
+                    border: 2px solid #fff;
+                    border-radius: 50%;
+                    background: #00aeec;
+                    box-shadow: 0 2px 8px rgba(0, 174, 236, 0.5);
+                }
+                .bilispeeder-native-slider-labels {
+                    display: flex;
+                    justify-content: space-between;
+                    margin-top: 7px;
+                    color: #aaa;
+                    font-size: 10px;
+                    line-height: 1;
                 }
                 .bilispeeder-native-presets {
                     display: grid;
                     grid-template-columns: repeat(4, minmax(0, 1fr));
                     gap: 6px;
-                    margin-bottom: 10px;
+                    margin-bottom: 11px;
                 }
                 .bilispeeder-native-preset {
-                    height: 32px;
+                    height: 34px;
                     border-radius: 16px;
                     padding: 0 6px;
-                    font-size: 12px;
+                    font-size: 13px;
                     font-weight: 600;
+                    font-variant-numeric: tabular-nums;
                 }
                 .bilispeeder-native-preset.active {
                     background: #00aeec;
                     color: #fff;
+                    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+                }
+                .bilispeeder-native-footer {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 10px;
                 }
                 .bilispeeder-native-status {
                     color: #aaa;
                     font-size: 11px;
                     line-height: 1.2;
-                    margin-top: 2px;
+                    white-space: nowrap;
+                }
+                .bilispeeder-native-reset {
+                    flex: 0 0 auto;
+                    height: 26px;
+                    border-radius: 13px;
+                    padding: 0 10px;
+                    color: #ddd;
+                    font-size: 12px;
+                    font-weight: 600;
                 }
             `);
         }
@@ -1169,14 +1239,23 @@
             const title = document.createElement('div');
             title.className = 'bilispeeder-native-title';
             title.textContent = '播放速度';
+            const subtitle = document.createElement('div');
+            subtitle.className = 'bilispeeder-native-subtitle';
+            subtitle.textContent = `${SPEED_SETTINGS.MIN}x - ${SPEED_SETTINGS.MAX}x / ${SPEED_SETTINGS.STEP}x`;
+            const titleWrap = document.createElement('div');
+            titleWrap.appendChild(title);
+            titleWrap.appendChild(subtitle);
             this.value = document.createElement('div');
             this.value.className = 'bilispeeder-native-value';
-            header.appendChild(title);
+            header.appendChild(titleWrap);
             header.appendChild(this.value);
 
             const controls = document.createElement('div');
             controls.className = 'bilispeeder-native-controls';
-            controls.appendChild(this.createRoundButton('-', -SPEED_SETTINGS.STEP));
+            this.minusButton = this.createRoundButton('-', -SPEED_SETTINGS.STEP);
+            controls.appendChild(this.minusButton);
+            const sliderWrap = document.createElement('div');
+            sliderWrap.className = 'bilispeeder-native-slider-wrap';
             this.slider = document.createElement('input');
             this.slider.className = 'bilispeeder-native-slider';
             this.slider.type = 'range';
@@ -1187,8 +1266,14 @@
                 event.stopPropagation();
                 this.controller.setSpeed(parseFloat(event.target.value));
             });
-            controls.appendChild(this.slider);
-            controls.appendChild(this.createRoundButton('+', SPEED_SETTINGS.STEP));
+            const sliderLabels = document.createElement('div');
+            sliderLabels.className = 'bilispeeder-native-slider-labels';
+            sliderLabels.innerHTML = `<span>${SPEED_SETTINGS.MIN}x</span><span>1x</span><span>2x</span><span>${SPEED_SETTINGS.MAX}x</span>`;
+            sliderWrap.appendChild(this.slider);
+            sliderWrap.appendChild(sliderLabels);
+            controls.appendChild(sliderWrap);
+            this.plusButton = this.createRoundButton('+', SPEED_SETTINGS.STEP);
+            controls.appendChild(this.plusButton);
 
             const presets = document.createElement('div');
             presets.className = 'bilispeeder-native-presets';
@@ -1205,14 +1290,26 @@
                 presets.appendChild(button);
             });
 
+            const footer = document.createElement('div');
+            footer.className = 'bilispeeder-native-footer';
             const status = document.createElement('div');
             status.className = 'bilispeeder-native-status';
             status.textContent = 'Shift+</> 0.25x 调速';
+            const reset = document.createElement('button');
+            reset.type = 'button';
+            reset.className = 'bilispeeder-native-reset';
+            reset.textContent = '重置 1x';
+            reset.addEventListener('click', event => {
+                event.stopPropagation();
+                this.controller.setSpeed(SPEED_SETTINGS.DEFAULT);
+            });
+            footer.appendChild(status);
+            footer.appendChild(reset);
 
             panel.appendChild(header);
             panel.appendChild(controls);
             panel.appendChild(presets);
-            panel.appendChild(status);
+            panel.appendChild(footer);
             return panel;
         }
 
@@ -1237,7 +1334,14 @@
             }
             const speedText = DOMUtils.formatSpeed(this.controller.currentSpeed);
             if (this.value) this.value.textContent = speedText;
-            if (this.slider) this.slider.value = this.controller.currentSpeed;
+            if (this.slider) {
+                this.slider.value = this.controller.currentSpeed;
+                const progress = ((this.controller.currentSpeed - SPEED_SETTINGS.MIN) /
+                    (SPEED_SETTINGS.MAX - SPEED_SETTINGS.MIN)) * 100;
+                this.slider.style.setProperty('--progress', `${Math.max(0, Math.min(100, progress))}%`);
+            }
+            if (this.minusButton) this.minusButton.disabled = this.controller.currentSpeed <= SPEED_SETTINGS.MIN;
+            if (this.plusButton) this.plusButton.disabled = this.controller.currentSpeed >= SPEED_SETTINGS.MAX;
             this.menu.querySelectorAll('.bilispeeder-native-preset').forEach(button => {
                 const speed = parseFloat(button.dataset.speed);
                 button.classList.toggle('active', Math.abs(speed - this.controller.currentSpeed) < 0.001);
