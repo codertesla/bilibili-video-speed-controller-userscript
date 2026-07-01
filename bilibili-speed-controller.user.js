@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         B站视频倍速器
 // @namespace    https://github.com/codertesla/bilibili-video-speed-controller-userscript
-// @version      1.6.1
+// @version      1.6.2
 // @description  自由设定 Bilibili 视频的默认播放速度。支持原生倍速菜单增强、0.25x 快捷调速、记住设置、自动应用、键盘快捷键和 SPA 切换。
 // @author       codertesla
 // @match        *://*.bilibili.com/video/*
@@ -1021,9 +1021,8 @@
 
     // ==================== B站原生倍速菜单增强 ====================
     class NativeSpeedMenu {
-        constructor(controller, settingsPanel) {
+        constructor(controller) {
             this.controller = controller;
-            this.settingsPanel = settingsPanel;
             this.menu = null;
             this.slider = null;
             this.value = null;
@@ -1077,8 +1076,7 @@
                     margin-bottom: 12px;
                 }
                 .bilispeeder-native-round,
-                .bilispeeder-native-preset,
-                .bilispeeder-native-settings {
+                .bilispeeder-native-preset {
                     border: 0;
                     color: #fff;
                     background: rgba(255, 255, 255, 0.15);
@@ -1087,8 +1085,7 @@
                     font-family: inherit;
                 }
                 .bilispeeder-native-round:hover,
-                .bilispeeder-native-preset:hover,
-                .bilispeeder-native-settings:hover {
+                .bilispeeder-native-preset:hover {
                     background: rgba(255, 255, 255, 0.24);
                 }
                 .bilispeeder-native-round {
@@ -1122,23 +1119,11 @@
                     background: #00aeec;
                     color: #fff;
                 }
-                .bilispeeder-native-footer {
-                    display: flex;
-                    align-items: center;
-                    justify-content: space-between;
-                    gap: 8px;
-                }
                 .bilispeeder-native-status {
                     color: #aaa;
                     font-size: 11px;
                     line-height: 1.2;
-                }
-                .bilispeeder-native-settings {
-                    flex: 0 0 auto;
-                    height: 28px;
-                    border-radius: 14px;
-                    padding: 0 10px;
-                    font-size: 12px;
+                    margin-top: 2px;
                 }
             `);
         }
@@ -1220,26 +1205,14 @@
                 presets.appendChild(button);
             });
 
-            const footer = document.createElement('div');
-            footer.className = 'bilispeeder-native-footer';
             const status = document.createElement('div');
             status.className = 'bilispeeder-native-status';
             status.textContent = 'Shift+</> 0.25x 调速';
-            const settings = document.createElement('button');
-            settings.type = 'button';
-            settings.className = 'bilispeeder-native-settings';
-            settings.textContent = '设置面板';
-            settings.addEventListener('click', event => {
-                event.stopPropagation();
-                this.settingsPanel.show();
-            });
-            footer.appendChild(status);
-            footer.appendChild(settings);
 
             panel.appendChild(header);
             panel.appendChild(controls);
             panel.appendChild(presets);
-            panel.appendChild(footer);
+            panel.appendChild(status);
             return panel;
         }
 
@@ -1288,9 +1261,8 @@
 
     // ==================== 菜单 ====================
     class MenuManager {
-        constructor(controller, settingsPanel) {
+        constructor(controller) {
             this.controller = controller;
-            this.settingsPanel = settingsPanel;
             this.menuIds = [];
             this.canUnregister = typeof GM_unregisterMenuCommand === 'function';
             this.register();
@@ -1320,7 +1292,6 @@
             });
 
             add(`⚡ ${c.enabled ? '禁用' : '启用'}倍速功能`, () => c.setEnabled(!c.enabled));
-            add('⚙️ 打开设置面板', () => this.settingsPanel.show());
         }
 
         refresh() {
@@ -1368,17 +1339,15 @@
 
         controller.initialize().then(() => {
             const toast = new Toast();
-            const settingsPanel = new SettingsPanel(controller);
             const keyboardShortcuts = new KeyboardShortcuts(controller, toast);
-            const menu = new MenuManager(controller, settingsPanel);
-            const nativeSpeedMenu = new NativeSpeedMenu(controller, settingsPanel);
+            const menu = new MenuManager(controller);
+            const nativeSpeedMenu = new NativeSpeedMenu(controller);
 
             // pagehide 在 BFCache / SPA 情境下比 beforeunload 更可靠
             window.addEventListener('pagehide', () => {
                 nativeSpeedMenu.destroy();
                 menu.destroy();
                 keyboardShortcuts.destroy();
-                settingsPanel.destroy();
                 toast.destroy();
                 controller.destroy();
             }, { once: true });
