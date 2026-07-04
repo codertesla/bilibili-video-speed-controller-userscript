@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         B站视频倍速器
 // @namespace    https://github.com/codertesla/bilibili-video-speed-controller-userscript
-// @version      1.6.4
-// @description  自由设定 Bilibili 视频的默认播放速度。支持原生倍速菜单增强、0.25x 快捷调速、记住设置、自动应用、键盘快捷键和 SPA 切换。
+// @version      1.6.5
+// @description  自由设定 Bilibili 视频的默认播放速度。支持原生倍速菜单增强、0.05x 精细调速、0.25x 快捷键调速、记住设置、自动应用和 SPA 切换。
 // @author       codertesla
 // @match        *://*.bilibili.com/video/*
 // @match        *://*.bilibili.com/bangumi/*
@@ -26,7 +26,8 @@
     const SPEED_SETTINGS = {
         MIN: 0.1,
         MAX: 3.0,
-        STEP: 0.25,
+        STEP: 0.05,
+        SHORTCUT_STEP: 0.25,
         DEFAULT: 1.0,
         DEFAULT_ENABLED: true,
         BILIBILI_DEFAULT: 1.5,
@@ -642,7 +643,7 @@
         constructor(controller, toast) {
             this.controller = controller;
             this.toast = toast;
-            this.speedStep = SPEED_SETTINGS.STEP;
+            this.speedStep = SPEED_SETTINGS.SHORTCUT_STEP;
             this.boundHandleKeydown = this.handleKeydown.bind(this);
             document.addEventListener('keydown', this.boundHandleKeydown, true);
             log.info('快捷键已启用: Shift+> 增速 0.25x, Shift+< 减速 0.25x, / 重置');
