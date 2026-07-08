@@ -84,6 +84,9 @@
 
 ## 📝 更新日志
 
+### v1.6.10 (2026-07-08)
+- **修复 v1.6.9 严重回归**：v1.6.8 移除关闭按钮时误把 `createRoundButton()` 替换成了空的 `closeMenu()`，导致倍速面板完全无法渲染。现已恢复 `createRoundButton()` 并彻底删除 `closeMenu()`
+
 ### v1.6.9 (2026-07-08)
 - **修复 v1.6.8 语法错误**：`MenuManager.openSpeedPanel()` 多了一个 `}`，导致脚本无法加载
 
