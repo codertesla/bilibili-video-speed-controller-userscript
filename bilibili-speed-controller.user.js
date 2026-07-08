@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         B站视频倍速器
 // @namespace    https://github.com/codertesla/bilibili-video-speed-controller-userscript
-// @version      1.6.5
+// @version      1.6.6
 // @description  自由设定 Bilibili 视频的默认播放速度。支持原生倍速菜单增强、0.05x 精细调速、0.25x 快捷键调速、记住设置、自动应用和 SPA 切换。
 // @author       codertesla
 // @match        *://*.bilibili.com/video/*
@@ -1040,162 +1040,157 @@
         injectStyles() {
             injectStylesOnce('native-menu', `
                 .bilispeeder-native-menu {
-                    width: 336px !important;
+                    width: 340px !important;
                     padding: 0 !important;
                     overflow: hidden !important;
-                    background: rgba(24, 24, 24, 0.96) !important;
-                    border-radius: 8px !important;
+                    background: #1e1e1e !important;
+                    border-radius: 12px !important;
                     color: #fff !important;
                     box-sizing: border-box !important;
-                    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.34) !important;
-                    backdrop-filter: blur(10px);
+                    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45) !important;
                 }
                 .bilispeeder-native-panel {
-                    padding: 14px 16px 15px;
+                    padding: 18px 20px 20px;
                     box-sizing: border-box;
                     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
                     cursor: default;
                 }
+                /* ---- Header ---- */
                 .bilispeeder-native-header {
                     display: flex;
-                    align-items: center;
+                    align-items: flex-start;
                     justify-content: space-between;
-                    gap: 12px;
-                    margin-bottom: 12px;
+                    margin-bottom: 8px;
+                }
+                .bilispeeder-native-title-block {
+                    display: flex;
+                    flex-direction: column;
                 }
                 .bilispeeder-native-title {
-                    font-size: 15px;
+                    font-size: 17px;
                     font-weight: 600;
                     line-height: 1.2;
+                    color: #eee;
                 }
                 .bilispeeder-native-subtitle {
-                    margin-top: 3px;
-                    color: #aaa;
-                    font-size: 11px;
+                    margin-top: 4px;
+                    color: #888;
+                    font-size: 12px;
                     font-weight: 400;
                     line-height: 1.2;
                 }
+                .bilispeeder-native-close {
+                    width: 28px; height: 28px;
+                    border: none; border-radius: 50%;
+                    background: transparent;
+                    color: #999; cursor: pointer;
+                    display: flex; align-items: center; justify-content: center;
+                    font-size: 20px; line-height: 1;
+                    transition: background 0.15s ease, color 0.15s ease;
+                    padding: 0; flex-shrink: 0;
+                    margin: -2px -2px 0 0;
+                }
+                .bilispeeder-native-close:hover { background: rgba(255,255,255,0.12); color: #fff; }
+                /* ---- Big speed value ---- */
+                .bilispeeder-native-value-row {
+                    text-align: center;
+                    padding: 14px 0 18px;
+                }
                 .bilispeeder-native-value {
-                    font-size: 28px;
+                    font-size: 44px;
                     font-weight: 700;
                     line-height: 1;
                     font-variant-numeric: tabular-nums;
+                    letter-spacing: -0.5px;
                 }
+                /* ---- Slider row ---- */
                 .bilispeeder-native-controls {
                     display: grid;
-                    grid-template-columns: 36px minmax(0, 1fr) 36px;
-                    gap: 12px;
+                    grid-template-columns: 38px minmax(0, 1fr) 38px;
+                    gap: 10px;
                     align-items: center;
-                    margin-bottom: 10px;
-                }
-                .bilispeeder-native-round,
-                .bilispeeder-native-preset,
-                .bilispeeder-native-reset {
-                    border: 0;
-                    color: #fff;
-                    background: rgba(255, 255, 255, 0.15);
-                    cursor: pointer;
-                    transition: background 0.12s ease, color 0.12s ease;
-                    font-family: inherit;
-                }
-                .bilispeeder-native-round:hover,
-                .bilispeeder-native-preset:hover,
-                .bilispeeder-native-reset:hover {
-                    background: rgba(255, 255, 255, 0.24);
-                }
-                .bilispeeder-native-round:disabled {
-                    opacity: 0.35;
-                    cursor: not-allowed;
+                    margin-bottom: 18px;
                 }
                 .bilispeeder-native-round {
-                    width: 36px;
-                    height: 36px;
-                    border-radius: 50%;
-                    padding: 0;
-                    font-size: 20px;
-                    line-height: 36px;
-                }
-                .bilispeeder-native-slider-wrap {
-                    min-width: 0;
-                }
-                .bilispeeder-native-slider {
-                    -webkit-appearance: none;
-                    appearance: none;
-                    width: 100%;
-                    height: 4px;
-                    min-width: 0;
-                    margin: 0;
-                    border-radius: 999px;
-                    background: linear-gradient(90deg, #00aeec 0%, #00aeec var(--progress), rgba(255, 255, 255, 0.28) var(--progress), rgba(255, 255, 255, 0.28) 100%);
-                    outline: none;
+                    width: 38px; height: 38px;
+                    border: 0; border-radius: 50%;
+                    color: #fff;
+                    background: rgba(255, 255, 255, 0.13);
                     cursor: pointer;
+                    transition: background 0.15s ease;
+                    font-family: inherit;
+                    font-size: 22px; line-height: 1; padding: 0;
+                    display: flex; align-items: center; justify-content: center;
+                }
+                .bilispeeder-native-round:hover { background: rgba(255, 255, 255, 0.22); }
+                .bilispeeder-native-round:disabled { opacity: 0.3; cursor: not-allowed; }
+                .bilispeeder-native-slider {
+                    -webkit-appearance: none; appearance: none;
+                    width: 100%; height: 4px; margin: 0;
+                    border-radius: 999px;
+                    background: linear-gradient(90deg, #fff 0%, #fff var(--progress), rgba(255,255,255,0.22) var(--progress), rgba(255,255,255,0.22) 100%);
+                    outline: none; cursor: pointer;
                 }
                 .bilispeeder-native-slider::-webkit-slider-thumb {
-                    -webkit-appearance: none;
-                    appearance: none;
-                    width: 17px;
-                    height: 17px;
-                    border: 2px solid #fff;
-                    border-radius: 50%;
-                    background: #00aeec;
-                    box-shadow: 0 2px 8px rgba(0, 174, 236, 0.5);
+                    -webkit-appearance: none; appearance: none;
+                    width: 18px; height: 18px;
+                    border-radius: 50%; background: #fff;
+                    cursor: pointer; border: none;
+                    box-shadow: 0 1px 5px rgba(0,0,0,0.35);
+                    transition: transform 0.1s ease;
                 }
+                .bilispeeder-native-slider::-webkit-slider-thumb:hover { transform: scale(1.15); }
                 .bilispeeder-native-slider::-moz-range-thumb {
-                    width: 15px;
-                    height: 15px;
-                    border: 2px solid #fff;
-                    border-radius: 50%;
-                    background: #00aeec;
-                    box-shadow: 0 2px 8px rgba(0, 174, 236, 0.5);
+                    width: 16px; height: 16px;
+                    border-radius: 50%; background: #fff;
+                    cursor: pointer; border: none;
                 }
-                .bilispeeder-native-slider-labels {
-                    display: flex;
-                    justify-content: space-between;
-                    margin-top: 7px;
-                    color: #aaa;
-                    font-size: 10px;
-                    line-height: 1;
-                }
+                /* ---- Preset pills ---- */
                 .bilispeeder-native-presets {
-                    display: grid;
-                    grid-template-columns: repeat(4, minmax(0, 1fr));
-                    gap: 6px;
-                    margin-bottom: 11px;
+                    display: flex;
+                    gap: 8px;
+                    margin-bottom: 16px;
                 }
                 .bilispeeder-native-preset {
-                    height: 34px;
-                    border-radius: 16px;
-                    padding: 0 6px;
-                    font-size: 13px;
-                    font-weight: 600;
+                    flex: 1;
+                    height: 36px;
+                    border: none; border-radius: 18px;
+                    background: rgba(255, 255, 255, 0.1);
+                    color: #ccc; cursor: pointer;
+                    font-family: inherit; font-size: 14px; font-weight: 500;
                     font-variant-numeric: tabular-nums;
+                    transition: all 0.15s ease;
+                    padding: 0;
                 }
-                .bilispeeder-native-preset.active {
-                    background: #00aeec;
-                    color: #fff;
-                    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
-                }
+                .bilispeeder-native-preset:hover { background: rgba(255, 255, 255, 0.18); color: #fff; }
+                .bilispeeder-native-preset.active { background: #fff; color: #1e1e1e; font-weight: 600; }
+                /* ---- Footer ---- */
                 .bilispeeder-native-footer {
                     display: flex;
                     align-items: center;
                     justify-content: space-between;
-                    gap: 10px;
                 }
-                .bilispeeder-native-status {
+                .bilispeeder-native-footer-label {
+                    font-size: 13px;
                     color: #aaa;
-                    font-size: 11px;
-                    line-height: 1.2;
-                    white-space: nowrap;
+                    font-weight: 500;
                 }
-                .bilispeeder-native-reset {
-                    flex: 0 0 auto;
-                    height: 26px;
-                    border-radius: 13px;
-                    padding: 0 10px;
-                    color: #ddd;
-                    font-size: 12px;
-                    font-weight: 600;
+                .bilispeeder-native-exact-input {
+                    width: 72px; height: 34px;
+                    border: 1px solid rgba(255,255,255,0.18);
+                    border-radius: 8px;
+                    background: rgba(255,255,255,0.07);
+                    color: #fff;
+                    font-family: inherit; font-size: 14px;
+                    font-weight: 600; font-variant-numeric: tabular-nums;
+                    text-align: center;
+                    outline: none;
+                    transition: border-color 0.15s ease;
+                    padding: 0 6px;
+                    box-sizing: border-box;
                 }
+                .bilispeeder-native-exact-input:focus { border-color: rgba(255,255,255,0.4); }
+                .bilispeeder-native-exact-input::placeholder { color: #666; }
             `);
         }
 
@@ -1235,22 +1230,39 @@
             panel.className = 'bilispeeder-native-panel';
             panel.addEventListener('click', event => event.stopPropagation());
 
+            // ---- Header: title + subtitle | close (X) ----
             const header = document.createElement('div');
             header.className = 'bilispeeder-native-header';
-            const title = document.createElement('div');
+            const titleBlock = document.createElement('div');
+            titleBlock.className = 'bilispeeder-native-title-block';
+            const title = document.createElement('span');
             title.className = 'bilispeeder-native-title';
             title.textContent = '播放速度';
-            const subtitle = document.createElement('div');
+            const subtitle = document.createElement('span');
             subtitle.className = 'bilispeeder-native-subtitle';
-            subtitle.textContent = `${SPEED_SETTINGS.MIN}x - ${SPEED_SETTINGS.MAX}x / ${SPEED_SETTINGS.STEP}x`;
-            const titleWrap = document.createElement('div');
-            titleWrap.appendChild(title);
-            titleWrap.appendChild(subtitle);
+            subtitle.textContent = `默认 ${SPEED_SETTINGS.BILIBILI_DEFAULT.toFixed(2)}x`;
+            titleBlock.appendChild(title);
+            titleBlock.appendChild(subtitle);
+            const closeButton = document.createElement('button');
+            closeButton.type = 'button';
+            closeButton.className = 'bilispeeder-native-close';
+            closeButton.innerHTML = '&#215;';
+            closeButton.setAttribute('aria-label', '关闭');
+            closeButton.addEventListener('click', event => {
+                event.stopPropagation();
+                this.closeMenu();
+            });
+            header.appendChild(titleBlock);
+            header.appendChild(closeButton);
+
+            // ---- Big centered speed value ----
+            const valueRow = document.createElement('div');
+            valueRow.className = 'bilispeeder-native-value-row';
             this.value = document.createElement('div');
             this.value.className = 'bilispeeder-native-value';
-            header.appendChild(titleWrap);
-            header.appendChild(this.value);
+            valueRow.appendChild(this.value);
 
+            // ---- Slider with +/- buttons (no labels) ----
             const controls = document.createElement('div');
             controls.className = 'bilispeeder-native-controls';
             this.minusButton = this.createRoundButton('-', -SPEED_SETTINGS.STEP);
@@ -1267,51 +1279,82 @@
                 event.stopPropagation();
                 this.controller.setSpeed(parseFloat(event.target.value));
             });
-            const sliderLabels = document.createElement('div');
-            sliderLabels.className = 'bilispeeder-native-slider-labels';
-            sliderLabels.innerHTML = `<span>${SPEED_SETTINGS.MIN}x</span><span>1x</span><span>2x</span><span>${SPEED_SETTINGS.MAX}x</span>`;
             sliderWrap.appendChild(this.slider);
-            sliderWrap.appendChild(sliderLabels);
             controls.appendChild(sliderWrap);
             this.plusButton = this.createRoundButton('+', SPEED_SETTINGS.STEP);
             controls.appendChild(this.plusButton);
 
-            const presets = document.createElement('div');
-            presets.className = 'bilispeeder-native-presets';
-            SPEED_SETTINGS.PRESETS.forEach(speed => {
+            // ---- Preset pills (single row, 5 items) ----
+            const presetsContainer = document.createElement('div');
+            presetsContainer.className = 'bilispeeder-native-presets';
+            // Use a cleaner set of 5 presets matching image 2
+            const compactPresets = [1.0, 1.25, 1.5, 2.0, 3.0];
+            compactPresets.forEach(speed => {
                 const button = document.createElement('button');
                 button.type = 'button';
                 button.className = 'bilispeeder-native-preset';
                 button.dataset.speed = String(speed);
-                button.textContent = `${speed}x`;
+                button.textContent = speed % 1 === 0 ? String(speed) : String(speed);
                 button.addEventListener('click', event => {
                     event.stopPropagation();
                     this.controller.setSpeed(speed);
                 });
-                presets.appendChild(button);
+                presetsContainer.appendChild(button);
             });
 
+            // ---- Footer: exact speed input ----
             const footer = document.createElement('div');
             footer.className = 'bilispeeder-native-footer';
-            const status = document.createElement('div');
-            status.className = 'bilispeeder-native-status';
-            status.textContent = 'Shift+</> 0.25x 调速';
-            const reset = document.createElement('button');
-            reset.type = 'button';
-            reset.className = 'bilispeeder-native-reset';
-            reset.textContent = '重置 1x';
-            reset.addEventListener('click', event => {
-                event.stopPropagation();
-                this.controller.setSpeed(SPEED_SETTINGS.DEFAULT);
+            const footerLabel = document.createElement('span');
+            footerLabel.className = 'bilispeeder-native-footer-label';
+            footerLabel.textContent = '精确速度';
+            this.exactInput = document.createElement('input');
+            this.exactInput.type = 'text';
+            this.exactInput.className = 'bilispeeder-native-exact-input';
+            this.exactInput.setAttribute('inputmode', 'decimal');
+            this.exactInput.addEventListener('focus', event => {
+                event.target.select();
             });
-            footer.appendChild(status);
-            footer.appendChild(reset);
+            this.exactInput.addEventListener('keydown', event => {
+                event.stopPropagation();
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    this.applyExactInput();
+                    this.exactInput.blur();
+                } else if (event.key === 'Escape') {
+                    this.exactInput.blur();
+                    this.sync();
+                }
+            });
+            this.exactInput.addEventListener('blur', () => {
+                this.sync();
+            });
+            footer.appendChild(footerLabel);
+            footer.appendChild(this.exactInput);
 
             panel.appendChild(header);
+            panel.appendChild(valueRow);
             panel.appendChild(controls);
-            panel.appendChild(presets);
+            panel.appendChild(presetsContainer);
             panel.appendChild(footer);
             return panel;
+        }
+
+        applyExactInput() {
+            if (!this.exactInput) return;
+            const val = parseFloat(this.exactInput.value);
+            if (!isNaN(val) && isFinite(val)) {
+                this.controller.setSpeed(val);
+            }
+            this.sync();
+        }
+
+        closeMenu() {
+            // Click outside to close Bilibili's menu
+            const speedBtn = document.querySelector(BILIBILI_SELECTORS.speedButton);
+            if (speedBtn) speedBtn.click();
+            // Fallback: dispatch click on overlay
+            document.dispatchEvent(new MouseEvent('click', { bubbles: true }));
         }
 
         createRoundButton(label, delta) {
@@ -1333,8 +1376,9 @@
                 this.scheduleAttach();
                 return;
             }
-            const speedText = DOMUtils.formatSpeed(this.controller.currentSpeed);
-            if (this.value) this.value.textContent = speedText;
+            // Format: always show exactly 2 decimal places for consistency
+            const speedText = this.controller.currentSpeed.toFixed(2);
+            if (this.value) this.value.textContent = `${speedText}x`;
             if (this.slider) {
                 this.slider.value = this.controller.currentSpeed;
                 const progress = ((this.controller.currentSpeed - SPEED_SETTINGS.MIN) /
@@ -1343,15 +1387,20 @@
             }
             if (this.minusButton) this.minusButton.disabled = this.controller.currentSpeed <= SPEED_SETTINGS.MIN;
             if (this.plusButton) this.plusButton.disabled = this.controller.currentSpeed >= SPEED_SETTINGS.MAX;
+            if (this.exactInput && document.activeElement !== this.exactInput) {
+                // Show clean value (strip trailing zeros when possible)
+                const cleanVal = parseFloat(speedText);
+                this.exactInput.value = cleanVal % 1 === 0 ? String(cleanVal) : speedText;
+            }
             this.menu.querySelectorAll('.bilispeeder-native-preset').forEach(button => {
                 const speed = parseFloat(button.dataset.speed);
                 button.classList.toggle('active', Math.abs(speed - this.controller.currentSpeed) < 0.001);
             });
 
             const result = document.querySelector(BILIBILI_SELECTORS.speedResult);
-            if (result) result.textContent = speedText;
+            if (result) result.textContent = `${speedText}x`;
             const speedButton = document.querySelector(BILIBILI_SELECTORS.speedButton);
-            if (speedButton) speedButton.setAttribute('aria-label', speedText);
+            if (speedButton) speedButton.setAttribute('aria-label', `${speedText}x`);
         }
 
         destroy() {
