@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         B站视频倍速器
 // @namespace    https://github.com/codertesla/bilibili-video-speed-controller-userscript
-// @version      1.6.6
+// @version      1.6.7
 // @description  自由设定 Bilibili 视频的默认播放速度。支持原生倍速菜单增强、0.05x 精细调速、0.25x 快捷键调速、记住设置、自动应用和 SPA 切换。
 // @author       codertesla
 // @match        *://*.bilibili.com/video/*
@@ -1350,11 +1350,25 @@
         }
 
         closeMenu() {
-            // Click outside to close Bilibili's menu
-            const speedBtn = document.querySelector(BILIBILI_SELECTORS.speedButton);
-            if (speedBtn) speedBtn.click();
-            // Fallback: dispatch click on overlay
-            document.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            // Bilibili's native menu closes on an "outside" interaction
+            // (clicking away / moving the mouse out). Replicate that by
+            // dispatching realistic events on document.body — NOT on
+            // `document` itself, because an event dispatched on `document`
+            // has document as its target and cannot bubble down to the
+            // body-level / container listeners that Bilibili actually uses.
+            const outside = document.body || document.documentElement;
+            ['mousedown', 'click'].forEach(type => {
+                outside.dispatchEvent(new MouseEvent(type, {
+                    bubbles: true,
+                    cancelable: true,
+                    view: window
+                }));
+            });
+            // Fallback: directly remove the popup "open" class Bilibili uses
+            // to toggle the rate menu's visibility.
+            const ctrl = document.querySelector(BILIBILI_SELECTORS.speedButton);
+            const container = ctrl ? ctrl.closest('.bpx-player-ctrl-playbackrate') : null;
+            if (container) container.classList.remove('bpx-player-ctrl-playbackrate-open');
         }
 
         createRoundButton(label, delta) {
