@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         B站视频倍速器
 // @namespace    https://github.com/codertesla/bilibili-video-speed-controller-userscript
-// @version      1.6.7
+// @version      1.6.8
 // @description  自由设定 Bilibili 视频的默认播放速度。支持原生倍速菜单增强、0.05x 精细调速、0.25x 快捷键调速、记住设置、自动应用和 SPA 切换。
 // @author       codertesla
 // @match        *://*.bilibili.com/video/*
@@ -1058,13 +1058,8 @@
                 /* ---- Header ---- */
                 .bilispeeder-native-header {
                     display: flex;
-                    align-items: flex-start;
-                    justify-content: space-between;
-                    margin-bottom: 8px;
-                }
-                .bilispeeder-native-title-block {
-                    display: flex;
                     flex-direction: column;
+                    margin-bottom: 4px;
                 }
                 .bilispeeder-native-title {
                     font-size: 17px;
@@ -1079,18 +1074,6 @@
                     font-weight: 400;
                     line-height: 1.2;
                 }
-                .bilispeeder-native-close {
-                    width: 28px; height: 28px;
-                    border: none; border-radius: 50%;
-                    background: transparent;
-                    color: #999; cursor: pointer;
-                    display: flex; align-items: center; justify-content: center;
-                    font-size: 20px; line-height: 1;
-                    transition: background 0.15s ease, color 0.15s ease;
-                    padding: 0; flex-shrink: 0;
-                    margin: -2px -2px 0 0;
-                }
-                .bilispeeder-native-close:hover { background: rgba(255,255,255,0.12); color: #fff; }
                 /* ---- Big speed value ---- */
                 .bilispeeder-native-value-row {
                     text-align: center;
@@ -1230,30 +1213,17 @@
             panel.className = 'bilispeeder-native-panel';
             panel.addEventListener('click', event => event.stopPropagation());
 
-            // ---- Header: title + subtitle | close (X) ----
+            // ---- Header: title + subtitle ----
             const header = document.createElement('div');
             header.className = 'bilispeeder-native-header';
-            const titleBlock = document.createElement('div');
-            titleBlock.className = 'bilispeeder-native-title-block';
             const title = document.createElement('span');
             title.className = 'bilispeeder-native-title';
             title.textContent = '播放速度';
             const subtitle = document.createElement('span');
             subtitle.className = 'bilispeeder-native-subtitle';
             subtitle.textContent = `默认 ${SPEED_SETTINGS.BILIBILI_DEFAULT.toFixed(2)}x`;
-            titleBlock.appendChild(title);
-            titleBlock.appendChild(subtitle);
-            const closeButton = document.createElement('button');
-            closeButton.type = 'button';
-            closeButton.className = 'bilispeeder-native-close';
-            closeButton.innerHTML = '&#215;';
-            closeButton.setAttribute('aria-label', '关闭');
-            closeButton.addEventListener('click', event => {
-                event.stopPropagation();
-                this.closeMenu();
-            });
-            header.appendChild(titleBlock);
-            header.appendChild(closeButton);
+            header.appendChild(title);
+            header.appendChild(subtitle);
 
             // ---- Big centered speed value ----
             const valueRow = document.createElement('div');
@@ -1350,28 +1320,6 @@
         }
 
         closeMenu() {
-            // Bilibili's native menu closes on an "outside" interaction
-            // (clicking away / moving the mouse out). Replicate that by
-            // dispatching realistic events on document.body — NOT on
-            // `document` itself, because an event dispatched on `document`
-            // has document as its target and cannot bubble down to the
-            // body-level / container listeners that Bilibili actually uses.
-            const outside = document.body || document.documentElement;
-            ['mousedown', 'click'].forEach(type => {
-                outside.dispatchEvent(new MouseEvent(type, {
-                    bubbles: true,
-                    cancelable: true,
-                    view: window
-                }));
-            });
-            // Fallback: directly remove the popup "open" class Bilibili uses
-            // to toggle the rate menu's visibility.
-            const ctrl = document.querySelector(BILIBILI_SELECTORS.speedButton);
-            const container = ctrl ? ctrl.closest('.bpx-player-ctrl-playbackrate') : null;
-            if (container) container.classList.remove('bpx-player-ctrl-playbackrate-open');
-        }
-
-        createRoundButton(label, delta) {
             const button = document.createElement('button');
             button.type = 'button';
             button.className = 'bilispeeder-native-round';
@@ -1446,20 +1394,39 @@
             };
 
             add(`📊 当前状态: ${c.enabled ? c.currentSpeed + 'x' : '已禁用'}`, () => {
-                const s = c.getStatus();
-                alert(
-                    `B站视频倍速控制器\n\n` +
-                    `状态: ${s.enabled ? '启用' : '禁用'}\n` +
-                    `当前速度: ${s.currentSpeed}x\n` +
-                    `检测到视频: ${s.videoCount} 个\n\n` +
-                    `快捷键:\n` +
-                    `Shift + >  增加 0.25x\n` +
-                    `Shift + <  降低 0.25x\n` +
-                    `/  重置倍速`
-                );
+                this.openSpeedPanel();
             });
 
             add(`⚡ ${c.enabled ? '禁用' : '启用'}倍速功能`, () => c.setEnabled(!c.enabled));
+        }
+
+        openSpeedPanel() {
+            // If the native speed menu is already open, do nothing.
+            const menu = document.querySelector(BILIBILI_SELECTORS.speedMenu);
+            if (menu && menu.offsetParent !== null) {
+                return;
+            }
+            // Click the Bilibili playback-rate button to open the native menu.
+            // NativeSpeedMenu will detect the menu and render the enhanced UI.
+            const speedBtn = document.querySelector(BILIBILI_SELECTORS.speedResult) ||
+                document.querySelector(BILIBILI_SELECTORS.speedButton);
+            if (speedBtn) {
+                speedBtn.click();
+                return;
+            }
+            // Fallback: show status info if the player isn't available yet.
+            const s = this.controller.getStatus();
+            alert(
+                `B站视频倍速控制器\n\n` +
+                `状态: ${s.enabled ? '启用' : '禁用'}\n` +
+                `当前速度: ${s.currentSpeed}x\n` +
+                `检测到视频: ${s.videoCount} 个\n\n` +
+                `快捷键:\n` +
+                `Shift + >  增加 0.25x\n` +
+                `Shift + <  降低 0.25x\n` +
+                `/  重置倍速`
+            );
+        }
         }
 
         refresh() {
